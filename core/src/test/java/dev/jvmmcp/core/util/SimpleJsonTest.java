@@ -12,6 +12,21 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class SimpleJsonTest {
 
     @Test
+    @DisplayName("toJson should throw IllegalArgumentException when exceeding max depth")
+    void shouldRejectExcessiveSerializationDepth() {
+        Map<String, Object> root = new java.util.HashMap<>();
+        Map<String, Object> current = root;
+        for (int i = 0; i < 120; i++) {
+            Map<String, Object> next = new java.util.HashMap<>();
+            current.put("child", next);
+            current = next;
+        }
+        assertThatThrownBy(() -> SimpleJson.toJson(root))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("depth");
+    }
+
+    @Test
     @DisplayName("parseObject should parse complex nested JSON with strings, arrays, and numbers")
     void shouldParseNestedJsonObject() {
         String json = """

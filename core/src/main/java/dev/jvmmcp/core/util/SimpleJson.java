@@ -19,7 +19,16 @@ public final class SimpleJson {
         throw new IllegalArgumentException("Expected JSON Object but found: " + (parsed != null ? parsed.getClass().getSimpleName() : "null"));
     }
 
+    private static final int MAX_SERIALIZATION_DEPTH = 100;
+
     public static String toJson(Object obj) {
+        return toJson(obj, 0);
+    }
+
+    private static String toJson(Object obj, int depth) {
+        if (depth > MAX_SERIALIZATION_DEPTH) {
+            throw new IllegalArgumentException("Exceeded maximum serialization depth (" + MAX_SERIALIZATION_DEPTH + ")");
+        }
         if (obj == null) return "null";
         if (obj instanceof String) {
             String s = (String) obj;
@@ -63,7 +72,7 @@ public final class SimpleJson {
             boolean first = true;
             for (Map.Entry<?, ?> entry : map.entrySet()) {
                 if (!first) sb.append(",");
-                sb.append(toJson(entry.getKey().toString())).append(":").append(toJson(entry.getValue()));
+                sb.append(toJson(entry.getKey().toString(), depth + 1)).append(":").append(toJson(entry.getValue(), depth + 1));
                 first = false;
             }
             return sb.append("}").toString();
@@ -73,7 +82,7 @@ public final class SimpleJson {
             boolean first = true;
             for (Object item : (Iterable<?>) obj) {
                 if (!first) sb.append(",");
-                sb.append(toJson(item));
+                sb.append(toJson(item, depth + 1));
                 first = false;
             }
             return sb.append("]").toString();
@@ -83,7 +92,7 @@ public final class SimpleJson {
             boolean first = true;
             for (Object item : (Object[]) obj) {
                 if (!first) sb.append(",");
-                sb.append(toJson(item));
+                sb.append(toJson(item, depth + 1));
                 first = false;
             }
             return sb.append("]").toString();
@@ -94,11 +103,11 @@ public final class SimpleJson {
             boolean first = true;
             for (java.lang.reflect.RecordComponent component : obj.getClass().getRecordComponents()) {
                 if (!first) sb.append(",");
-                sb.append(toJson(component.getName())).append(":");
+                sb.append(toJson(component.getName(), depth + 1)).append(":");
                 try {
                     java.lang.reflect.Method accessor = component.getAccessor();
                     accessor.setAccessible(true);
-                    sb.append(toJson(accessor.invoke(obj)));
+                    sb.append(toJson(accessor.invoke(obj), depth + 1));
                 } catch (Exception e) {
                     sb.append("null");
                 }
@@ -107,7 +116,7 @@ public final class SimpleJson {
             return sb.append("}").toString();
         }
         // Fallback for everything else
-        return toJson(obj.toString());
+        return toJson(obj.toString(), depth + 1);
     }
 
     public static Object parse(String json) {

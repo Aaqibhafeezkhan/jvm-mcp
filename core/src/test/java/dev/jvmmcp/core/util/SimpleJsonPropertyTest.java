@@ -34,6 +34,7 @@ class SimpleJsonPropertyTest {
 
         assertThat(result).isNotNull();
         assertThat(((Number) result.get("intVal")).longValue()).isEqualTo(integerVal);
+        assertThat(((Number) result.get("floatVal")).doubleValue()).isEqualTo(floatVal, org.assertj.core.data.Offset.offset(0.0001));
     }
 
     @Property

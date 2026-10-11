@@ -33,10 +33,28 @@ class GlobMatcherTest {
     }
 
     @Test
-    @DisplayName("matches returns false when text is null and pattern is specific")
+    @DisplayName("matches returns false when text is null")
     void shouldReturnFalseForNullText() {
         assertThat(GlobMatcher.matches(null, "somePattern")).isFalse();
-        assertThat(GlobMatcher.matches(null, null)).isTrue();
-        assertThat(GlobMatcher.matches(null, "*")).isTrue();
+        assertThat(GlobMatcher.matches(null, null)).isFalse();
+        assertThat(GlobMatcher.matches(null, "*")).isFalse();
+    }
+
+    @Test
+    @DisplayName("Consecutive wildcards should collapse and match correctly without ReDoS")
+    void shouldCollapseConsecutiveWildcards() {
+        assertThat(GlobMatcher.matches("foobar", "foo*****bar")).isTrue();
+        assertThat(GlobMatcher.matches("fooXYZbar", "foo***bar")).isTrue();
+        assertThat(GlobMatcher.matches("foobaz", "foo***bar")).isFalse();
+    }
+
+    @Test
+    @DisplayName("Excessive glob pattern length throws IllegalArgumentException in compileGlob")
+    void shouldRejectExcessiveGlobLength() {
+        String excessivePattern = "*".repeat(300);
+        org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class, () ->
+            GlobMatcher.compileGlob(excessivePattern)
+        );
+        assertThat(GlobMatcher.matches("test", excessivePattern)).isFalse();
     }
 }
