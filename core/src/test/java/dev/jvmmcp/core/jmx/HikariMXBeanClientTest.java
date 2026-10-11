@@ -123,11 +123,11 @@ class HikariMXBeanClientTest {
     void shouldWrapQueryExceptions() throws Exception {
         when(mockMbsc.queryNames(any(), any())).thenThrow(new RuntimeException("JMX query failure"));
 
-        HikariMXBeanClient client = new HikariMXBeanClient(mockMbsc);
-
-        assertThatThrownBy(client::getPools)
-            .isInstanceOf(IOException.class)
-            .hasMessageContaining("Failed to query HikariCP MBeans");
+        try (HikariMXBeanClient client = new HikariMXBeanClient(mockMbsc)) {
+            assertThatThrownBy(client::getPools)
+                .isInstanceOf(IOException.class)
+                .hasMessageContaining("Failed to query HikariCP MBeans");
+        }
     }
 
     @Test
@@ -136,11 +136,11 @@ class HikariMXBeanClientTest {
         ObjectName poolName = new ObjectName("com.zaxxer.hikari:type=Pool (FailingPool)");
         when(mockMbsc.getAttribute(poolName, "ActiveConnections")).thenThrow(new RuntimeException("Attr read failure"));
 
-        HikariMXBeanClient client = new HikariMXBeanClient(mockMbsc);
-
-        assertThatThrownBy(() -> client.readPool(poolName))
-            .isInstanceOf(IOException.class)
-            .hasMessageContaining("Failed to read HikariCP pool");
+        try (HikariMXBeanClient client = new HikariMXBeanClient(mockMbsc)) {
+            assertThatThrownBy(() -> client.readPool(poolName))
+                .isInstanceOf(IOException.class)
+                .hasMessageContaining("Failed to read HikariCP pool");
+        }
     }
 
     @Test
@@ -149,11 +149,11 @@ class HikariMXBeanClientTest {
         ObjectName configName = new ObjectName("com.zaxxer.hikari:type=PoolConfig (FailingPool)");
         when(mockMbsc.getAttribute(configName, "MaximumPoolSize")).thenThrow(new RuntimeException("Config read failure"));
 
-        HikariMXBeanClient client = new HikariMXBeanClient(mockMbsc);
-
-        assertThatThrownBy(() -> client.getMaximumPoolSize(configName))
-            .isInstanceOf(IOException.class)
-            .hasMessageContaining("Failed to read maximum pool size");
+        try (HikariMXBeanClient client = new HikariMXBeanClient(mockMbsc)) {
+            assertThatThrownBy(() -> client.getMaximumPoolSize(configName))
+                .isInstanceOf(IOException.class)
+                .hasMessageContaining("Failed to read maximum pool size");
+        }
     }
 
     @Test
@@ -178,12 +178,13 @@ class HikariMXBeanClientTest {
         ObjectName configName = new ObjectName("com.zaxxer.hikari:type=PoolConfig (CustomPool)");
         when(mockMbsc.getAttribute(configName, "MaximumPoolSize")).thenReturn(0);
 
-        HikariMXBeanClient client = new HikariMXBeanClient(mockMbsc);
-        List<HikariPoolStatistics> pools = client.getPools();
+        try (HikariMXBeanClient client = new HikariMXBeanClient(mockMbsc)) {
+            List<HikariPoolStatistics> pools = client.getPools();
 
-        assertThat(pools).hasSize(1);
-        assertThat(pools.get(0).poolName()).isEqualTo("CustomPool");
-        assertThat(pools.get(0).saturationRatio()).isEqualTo(-1.0);
+            assertThat(pools).hasSize(1);
+            assertThat(pools.get(0).poolName()).isEqualTo("CustomPool");
+            assertThat(pools.get(0).saturationRatio()).isEqualTo(-1.0);
+        }
     }
 }
 

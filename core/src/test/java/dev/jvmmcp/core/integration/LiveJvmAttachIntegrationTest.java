@@ -64,10 +64,11 @@ class LiveJvmAttachIntegrationTest {
             assertThat(result.virtualMachine()).isPresent();
 
             // 2. Connect JMX
-            try (JmxConnectionManager jmx = JmxConnectionManager.connect(result.virtualMachine().get(), targetPid)) {
+            try (JmxConnectionManager jmx = JmxConnectionManager.connect(result.virtualMachine().get(), targetPid);
+                 MemoryMXBeanClient memoryClient = new MemoryMXBeanClient(jmx.getMBeanServerConnection());
+                 ThreadMXBeanClient threadClient = new ThreadMXBeanClient(jmx.getMBeanServerConnection())) {
                 
                 // 3. Read Memory (using the Port implementation)
-                MemoryMXBeanClient memoryClient = new MemoryMXBeanClient(jmx.getMBeanServerConnection());
                 HeapSummary heap = memoryClient.getHeapSummary(targetPid);
                 
                 assertThat(heap.heap().maxMb()).isGreaterThan(0);
@@ -76,7 +77,6 @@ class LiveJvmAttachIntegrationTest {
                 assertThat(heap.pressure().level()).isNotNull();
 
                 // 4. Read Threads
-                ThreadMXBeanClient threadClient = new ThreadMXBeanClient(jmx.getMBeanServerConnection());
                 ThreadSummary threads = threadClient.getThreadSummary(targetPid);
 
                 assertThat(threads.totalCount()).isGreaterThan(0);
