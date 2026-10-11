@@ -15,7 +15,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-public class PostgresSchemaReader {
+public class PostgresSchemaReader implements AutoCloseable {
 
     private static final int MAX_CACHED_POOLS = 5;
     
@@ -48,9 +48,72 @@ public class PostgresSchemaReader {
     private final String password;
 
     public PostgresSchemaReader(String jdbcUrl, String username, String password) {
+        validateJdbcUrl(jdbcUrl);
         this.jdbcUrl = jdbcUrl;
         this.username = username;
         this.password = password;
+    }
+
+    public static void validateJdbcUrl(String jdbcUrl) {
+        if (jdbcUrl == null || !jdbcUrl.startsWith("jdbc:postgresql://")) {
+            throw new IllegalArgumentException("Invalid PostgreSQL JDBC URL: must start with jdbc:postgresql://");
+        }
+        if (jdbcUrl.contains(",")) {
+            throw new IllegalArgumentException("SSRF Protection: Multi-host JDBC URLs are prohibited");
+        }
+        
+        String uriStr = jdbcUrl.substring(5); // strip "jdbc:"
+        java.net.URI uri;
+        try {
+            uri = java.net.URI.create(uriStr);
+        } catch (Exception e) {
+            throw new IllegalArgumentException("Malformed PostgreSQL JDBC URL: " + e.getMessage(), e);
+        }
+
+        if (uri.getUserInfo() != null) {
+            throw new IllegalArgumentException("SSRF Protection: Embedded userinfo in JDBC URL is prohibited");
+        }
+
+        String rawAuthority = uri.getRawAuthority();
+        if (rawAuthority != null && rawAuthority.contains(",")) {
+            throw new IllegalArgumentException("SSRF Protection: Multi-host JDBC URLs are prohibited");
+        }
+
+        String host = uri.getHost();
+        if (host == null || host.isBlank()) {
+            throw new IllegalArgumentException("SSRF Protection: Missing host in JDBC URL");
+        }
+        if (!host.equalsIgnoreCase("localhost") && !host.equals("127.0.0.1") && !host.equals("::1") && !host.equals("[::1]")) {
+            throw new IllegalArgumentException("SSRF Protection: JDBC URL host must target localhost or loopback (got: " + host + ")");
+        }
+
+        String query = uri.getQuery();
+        if (query != null && !query.isBlank()) {
+            String lower = query.toLowerCase();
+            if (lower.contains("socketfactory") ||
+                lower.contains("sslfactory") ||
+                lower.contains("sslrootcert") ||
+                lower.contains("sslcert") ||
+                lower.contains("sslkey") ||
+                lower.contains("sslpasswordcallback") ||
+                lower.contains("options=") ||
+                lower.contains("sslmode=disable")) {
+                throw new IllegalArgumentException("Security Protection: Dangerous JDBC connection parameter detected in URL: " + query);
+            }
+        }
+    }
+
+    @Override
+    public void close() {
+        String cacheKey = jdbcUrl + "|" + (username != null ? username : "") + "|" + (password != null ? password : "");
+        synchronized (DATA_SOURCES) {
+            HikariDataSource ds = DATA_SOURCES.remove(cacheKey);
+            if (ds != null) {
+                try {
+                    ds.close();
+                } catch (Exception ignored) {}
+            }
+        }
     }
 
     private Connection getConnection() throws SQLException {
@@ -286,8 +349,10 @@ public class PostgresSchemaReader {
             try (Statement stmt = conn.createStatement();
                  ResultSet rs = stmt.executeQuery(sql)) {
                 while (rs.next()) {
+                    String rawQuery = rs.getString("query");
+                    String sanitizedQuery = sanitizeQuery(rawQuery);
                     slowQueries.add(new SlowQueryInfo(
-                        rs.getString("query"),
+                        sanitizedQuery,
                         rs.getLong("calls"),
                         rs.getDouble("compatible_mean_time"),
                         rs.getDouble("compatible_max_time"),
@@ -299,5 +364,11 @@ public class PostgresSchemaReader {
             }
             return new SlowQueryAnalysis(true, slowQueries);
         }
+    }
+
+    private static String sanitizeQuery(String query) {
+        if (query == null) return null;
+        // Redact literals in password statements or tokens
+        return query.replaceAll("(?i)(password\\s*(?:=|with)\\s*)'[^']*'", "$1'***'");
     }
 }

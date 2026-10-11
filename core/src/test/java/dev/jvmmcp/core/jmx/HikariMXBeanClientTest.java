@@ -22,16 +22,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 
-import org.testcontainers.containers.PostgreSQLContainer;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
-
-@Testcontainers(disabledWithoutDocker = true)
 @ExtendWith(MockitoExtension.class)
 class HikariMXBeanClientTest {
-
-    @Container
-    private static final PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>(org.testcontainers.utility.DockerImageName.parse("public.ecr.aws/docker/library/postgres:15-alpine").asCompatibleSubstituteFor("postgres"));
 
     private JmxConnectionManager connectionManager;
     private HikariDataSource dataSource;
@@ -47,9 +39,9 @@ class HikariMXBeanClientTest {
         config.setPoolName("TestHikariPool");
         config.setMaximumPoolSize(5);
         config.setMinimumIdle(1);
-        config.setJdbcUrl(postgres.getJdbcUrl());
-        config.setUsername(postgres.getUsername());
-        config.setPassword(postgres.getPassword());
+        config.setJdbcUrl("jdbc:h2:mem:test1;DB_CLOSE_DELAY=-1");
+        config.setUsername("sa");
+        config.setPassword("");
         config.setRegisterMbeans(true);
 
         dataSource = new HikariDataSource(config);
@@ -58,9 +50,9 @@ class HikariMXBeanClientTest {
         secondConfig.setPoolName("SecondTestHikariPool");
         secondConfig.setMaximumPoolSize(10);
         secondConfig.setMinimumIdle(1);
-        secondConfig.setJdbcUrl(postgres.getJdbcUrl() + "?schema=second");
-        secondConfig.setUsername(postgres.getUsername());
-        secondConfig.setPassword(postgres.getPassword());
+        secondConfig.setJdbcUrl("jdbc:h2:mem:test2;DB_CLOSE_DELAY=-1");
+        secondConfig.setUsername("sa");
+        secondConfig.setPassword("");
         secondConfig.setRegisterMbeans(true);
 
         secondDataSource = new HikariDataSource(secondConfig);
