@@ -1,14 +1,12 @@
 package dev.jvmmcp.core.spring;
 
 import com.sun.tools.attach.VirtualMachine;
-import dev.jvmmcp.core.jmx.JmxConnectionManager;
 import dev.jvmmcp.core.model.SpringBeanDetail;
 import dev.jvmmcp.core.model.SpringBeansReport;
 import dev.jvmmcp.core.model.SpringContextBeans;
 
 import javax.management.MBeanServerConnection;
 import javax.management.ObjectName;
-import java.io.IOException;
 import java.util.*;
 
 /**

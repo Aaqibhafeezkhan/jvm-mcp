@@ -12,7 +12,6 @@ import java.util.*;
  */
 public class SpringBeansParser {
 
-    @SuppressWarnings("unchecked")
     public SpringBeansReport parse(long pid, String discoverySource, String jsonContent) {
         if (jsonContent == null || jsonContent.isBlank()) {
             return new SpringBeansReport(pid, discoverySource, 0, List.of());
@@ -22,7 +21,6 @@ public class SpringBeansParser {
         return parseMap(pid, discoverySource, root);
     }
 
-    @SuppressWarnings("unchecked")
     public SpringBeansReport parseMap(long pid, String discoverySource, Map<String, Object> root) {
         if (root == null || root.isEmpty()) {
             return new SpringBeansReport(pid, discoverySource, 0, List.of());
@@ -59,7 +57,6 @@ public class SpringBeansParser {
         return new SpringBeansReport(pid, discoverySource, totalBeans, contextList);
     }
 
-    @SuppressWarnings("unchecked")
     private List<SpringBeanDetail> parseBeansMap(Object beansObj) {
         List<SpringBeanDetail> beans = new ArrayList<>();
         if (!(beansObj instanceof Map<?, ?> map)) {
