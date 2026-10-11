@@ -2,6 +2,7 @@ package dev.jvmmcp;
 
 import dev.jvmmcp.core.attach.AttachResult;
 import dev.jvmmcp.core.attach.JvmAttachService;
+import dev.jvmmcp.core.jmx.HikariMXBeanClient;
 import dev.jvmmcp.core.jmx.JmxConnectionManager;
 import dev.jvmmcp.core.jmx.MemoryMXBeanClient;
 import dev.jvmmcp.core.jmx.ThreadMXBeanClient;
@@ -119,7 +120,6 @@ public class ServeCommand implements Callable<Integer> {
             String method = (String) req.get("method");
 
             if ("initialize".equals(method)) {
-                Map<String, Object> params = (Map<String, Object>) req.get("params");
                 response.put("result", Map.of(
                     "protocolVersion", "2024-11-05",
                     "capabilities", Map.of("tools", Map.of()),
@@ -142,10 +142,10 @@ public class ServeCommand implements Callable<Integer> {
             }
 
             if ("tools/call".equals(method)) {
-                Map<String, Object> params = (Map<String, Object>) req.get("params");
+                Map<String, Object> params = asMap(req.get("params"));
                 if (params != null) {
                     String toolName = (String) params.get("name");
-                    Map<String, Object> args = (Map<String, Object>) params.get("arguments");
+                    Map<String, Object> args = asMap(params.get("arguments"));
                     response.put("result", executeTool(toolName, args));
                     sendResponse(response);
                     return;
@@ -312,6 +312,11 @@ public class ServeCommand implements Callable<Integer> {
         );
     }
 
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> asMap(Object obj) {
+        return obj instanceof Map<?, ?> map ? (Map<String, Object>) map : null;
+    }
+
     private String getStringArg(Map<String, Object> args, String key, boolean required) {
         if (args == null || !args.containsKey(key)) {
             if (required) throw new IllegalArgumentException("Missing required argument: " + key);
@@ -362,8 +367,9 @@ public class ServeCommand implements Callable<Integer> {
                         : JmxConnectionManager.connectLocal()) {
                         
                     if ("get_memory_summary".equals(toolName)) {
-                        MemoryMXBeanClient memoryClient = new MemoryMXBeanClient(jmxManager.getMBeanServerConnection());
-                        content.add(Map.of("type", "text", "text", SimpleJson.toJson(memoryClient.getHeapSummary(pid))));
+                        try (MemoryMXBeanClient memoryClient = new MemoryMXBeanClient(jmxManager.getMBeanServerConnection())) {
+                            content.add(Map.of("type", "text", "text", SimpleJson.toJson(memoryClient.getHeapSummary(pid))));
+                        }
                     } else if ("get_heap_histogram".equals(toolName)) {
                         dev.jvmmcp.core.jmx.HeapHistogramReader histoReader = new dev.jvmmcp.core.jmx.HeapHistogramReader();
                         long limit = args != null && args.containsKey("limit") ? getLongArg(args, "limit", false) : 100L;
@@ -371,12 +377,14 @@ public class ServeCommand implements Callable<Integer> {
                         if (limit > 1000) limit = 1000L;
                         content.add(Map.of("type", "text", "text", SimpleJson.toJson(histoReader.readHistogram(jmxManager.getMBeanServerConnection(), pid, (int) limit))));
                     } else if ("get_thread_diagnostics".equals(toolName)) {
-                        ThreadMXBeanClient threadClient = new ThreadMXBeanClient(jmxManager.getMBeanServerConnection());
-                        content.add(Map.of("type", "text", "text", SimpleJson.toJson(threadClient.getThreadSummary(pid))));
-                        content.add(Map.of("type", "text", "text", "Deadlock Report: " + SimpleJson.toJson(threadClient.detectDeadlocks())));
+                        try (ThreadMXBeanClient threadClient = new ThreadMXBeanClient(jmxManager.getMBeanServerConnection())) {
+                            content.add(Map.of("type", "text", "text", SimpleJson.toJson(threadClient.getThreadSummary(pid))));
+                            content.add(Map.of("type", "text", "text", "Deadlock Report: " + SimpleJson.toJson(threadClient.detectDeadlocks())));
+                        }
                     } else if ("get_thread_dump".equals(toolName)) {
-                        ThreadMXBeanClient threadClient = new ThreadMXBeanClient(jmxManager.getMBeanServerConnection());
-                        content.add(Map.of("type", "text", "text", SimpleJson.toJson(threadClient.getThreadDump(pid, false, false))));
+                        try (ThreadMXBeanClient threadClient = new ThreadMXBeanClient(jmxManager.getMBeanServerConnection())) {
+                            content.add(Map.of("type", "text", "text", SimpleJson.toJson(threadClient.getThreadDump(pid, false, false))));
+                        }
                     } else if ("list_spring_beans".equals(toolName) || "get_bean_detail".equals(toolName)) {
                         dev.jvmmcp.core.spring.SpringBeansClient beansClient = new dev.jvmmcp.core.spring.SpringBeansClient();
                         String filterGlob = getStringArg(args, "filter", false);
@@ -389,8 +397,9 @@ public class ServeCommand implements Callable<Integer> {
                             content.add(Map.of("type", "text", "text", SimpleJson.toJson(beansClient.getBeanDetail(report, beanName).orElse(null))));
                         }
                     } else if ("list_hikari_pools".equals(toolName)) {
-                        dev.jvmmcp.core.jmx.HikariMXBeanClient hikariClient = new dev.jvmmcp.core.jmx.HikariMXBeanClient(jmxManager.getMBeanServerConnection());
-                        content.add(Map.of("type", "text", "text", SimpleJson.toJson(hikariClient.getPools())));
+                        try (HikariMXBeanClient hikariClient = new HikariMXBeanClient(jmxManager.getMBeanServerConnection())) {
+                            content.add(Map.of("type", "text", "text", SimpleJson.toJson(hikariClient.getPools())));
+                        }
                     }
                 }
             } else if ("inspect_pg_schema".equals(toolName) || "find_missing_indexes".equals(toolName) || "find_slow_queries".equals(toolName)) {

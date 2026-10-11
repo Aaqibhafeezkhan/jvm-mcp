@@ -59,9 +59,9 @@ public class MemoryCommand implements Callable<Integer> {
 
             try (JmxConnectionManager jmxManager = attachResult.virtualMachine().isPresent() 
                     ? JmxConnectionManager.connect(attachResult.virtualMachine().get(), pid) 
-                    : JmxConnectionManager.connectLocal()) {
+                    : JmxConnectionManager.connectLocal();
+                 MemoryMXBeanClient client = new MemoryMXBeanClient(jmxManager.getMBeanServerConnection())) {
 
-                MemoryMXBeanClient client = new MemoryMXBeanClient(jmxManager.getMBeanServerConnection());
                 HeapSummary summary = client.getHeapSummary(pid);
 
                 System.out.println("=".repeat(80));
