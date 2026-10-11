@@ -33,6 +33,7 @@ jobs:
           cache: 'maven'
 
       - name: Build Fat JAR
+        shell: bash
         run: ./mvnw clean package -B 
 
       - name: Build Native Executable with jpackage
@@ -50,20 +51,22 @@ jobs:
             mkdir -p dist
             cp -r custom-jre dist/
             cp mcp-server/target/jvm-mcp-server-*.jar dist/app.jar
-            echo '#!/bin/bash' > dist/jvm-mcp-${{ matrix.suffix }}
-            echo 'DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"' >> dist/jvm-mcp-${{ matrix.suffix }}
-            echo 'exec "$DIR/custom-jre/bin/java" -jar "$DIR/app.jar" "$@"' >> dist/jvm-mcp-${{ matrix.suffix }}
-            chmod +x dist/jvm-mcp-${{ matrix.suffix }}
+            echo '#!/bin/bash' > dist/jvm-mcp
+            echo 'DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"' >> dist/jvm-mcp
+            echo 'exec "$DIR/custom-jre/bin/java" -jar "$DIR/app.jar" "$@"' >> dist/jvm-mcp
+            chmod +x dist/jvm-mcp
+            cp dist/jvm-mcp dist/jvm-mcp-${{ matrix.suffix }}
             tar -czvf jvm-mcp-${{ matrix.suffix }}.tar.gz -C dist .
           else
             # Linux
             mkdir -p dist
             cp -r custom-jre dist/
             cp mcp-server/target/jvm-mcp-server-*.jar dist/app.jar
-            echo '#!/bin/bash' > dist/jvm-mcp-${{ matrix.suffix }}
-            echo 'DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"' >> dist/jvm-mcp-${{ matrix.suffix }}
-            echo 'exec "$DIR/custom-jre/bin/java" -jar "$DIR/app.jar" "$@"' >> dist/jvm-mcp-${{ matrix.suffix }}
-            chmod +x dist/jvm-mcp-${{ matrix.suffix }}
+            echo '#!/bin/bash' > dist/jvm-mcp
+            echo 'DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"' >> dist/jvm-mcp
+            echo 'exec "$DIR/custom-jre/bin/java" -jar "$DIR/app.jar" "$@"' >> dist/jvm-mcp
+            chmod +x dist/jvm-mcp
+            cp dist/jvm-mcp dist/jvm-mcp-${{ matrix.suffix }}
             tar -czvf jvm-mcp-${{ matrix.suffix }}.tar.gz -C dist .
           fi
 

@@ -12,7 +12,6 @@
     <modules>
         <module>core</module>
         <module>mcp-server</module>
-        <module>native</module>
     </modules>
 
     <properties>

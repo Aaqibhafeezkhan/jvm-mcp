@@ -16,9 +16,9 @@ Before writing code, please review these foundational design decisions:
    - Standard CLI (`stdio` transport) runs on the pure Java MCP SDK. Startup must remain `< 15ms`.
    - Never inject Spring context initialization into the default CLI path. Spring AI features belong strictly to the `--transport sse` path.
 
-3. **GraalVM Native Image Friendliness:**
-   - Avoid unchecked dynamic reflection or dynamic bytecode generation in `core` and `mcp-server`.
-   - All MBeans and domain models must have explicit reflection registration if processed by Native Image.
+3. **Jlink & Jpackage Custom Runtime Architecture:**
+   - The Attach API requires HotSpot native library bindings (`attach.dll` / `libattach.so`), so standalone distribution is packaged via `jlink` custom-stripped JREs and `jpackage` installers.
+   - Avoid unchecked dynamic reflection or bloated dependencies in `core` and `mcp-server` to keep binary size minimal and startup fast (< 15ms).
 
 4. **Resource Safety & Graceful Failures:**
    - All JMX connections and Attach handles must implement deterministic cleanup (`try-with-resources` or explicit `detach()`).

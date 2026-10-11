@@ -19,7 +19,14 @@ esac
 ARCH="$(uname -m)"
 case "${ARCH}" in
     x86_64|amd64) ARCH_NAME="amd64" ;;
-    aarch64|arm64) ARCH_NAME="amd64" ; echo "Note: Using amd64 build on arm64 via Rosetta/translation" ;;
+    aarch64|arm64)
+        if [ "${OS_NAME}" = "macos" ]; then
+            ARCH_NAME="aarch64"
+        else
+            ARCH_NAME="amd64"
+            echo "Note: Using amd64 build on arm64 via translation/emulation"
+        fi
+        ;;
     *)             echo "Error: Unsupported architecture: ${ARCH}"; exit 1 ;;
 esac
 
@@ -36,7 +43,11 @@ rm "/tmp/${RELEASE_ASSET}"
 
 echo "Creating symlink in ${BIN_DIR}..."
 mkdir -p "${BIN_DIR}"
-ln -sf "${INSTALL_DIR}/jvm-mcp-${OS_NAME}-${ARCH_NAME}" "${BIN_DIR}/${EXECUTABLE_NAME}"
+if [ -f "${INSTALL_DIR}/${EXECUTABLE_NAME}" ]; then
+    ln -sf "${INSTALL_DIR}/${EXECUTABLE_NAME}" "${BIN_DIR}/${EXECUTABLE_NAME}"
+elif [ -f "${INSTALL_DIR}/jvm-mcp-${OS_NAME}-${ARCH_NAME}" ]; then
+    ln -sf "${INSTALL_DIR}/jvm-mcp-${OS_NAME}-${ARCH_NAME}" "${BIN_DIR}/${EXECUTABLE_NAME}"
+fi
 
 # 3. Update PATH if necessary
 if [[ ":$PATH:" != *":${BIN_DIR}:"* ]]; then

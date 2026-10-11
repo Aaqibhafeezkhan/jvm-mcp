@@ -9,14 +9,14 @@ This roadmap outlines current development milestones, architectural priorities, 
 ## Current Status: Phase 6 (Completed)
 
 - [x] **Phase 0: Architecture Scaffolding**
-  - Maven multi-module architecture (`core`, `agent`, `mcp-server`, `native`).
-  - Dual-layer design (Pure Java SDK for `< 15ms` CLI startup vs optional Spring AI SSE transport).
+  - Maven multi-module architecture (`core`, `mcp-server` with Jlink custom runtime distribution).
+  - High-performance CLI startup (< 15ms) via stdio JSON-RPC 2.0 MCP transport.
   - GitHub Actions CI matrix on Temurin JDK 21.
 
 - [x] **Phase 1: JVM Discovery & Attach Lifecycle**
   - JDK Attach API wrapper (`JvmAttachService`) for live process discovery.
   - Framework heuristics (`FrameworkDetector` for Spring Boot, Quarkus, Micronaut, Plain Java).
-  - Lazy diagnostic agent extractor with SHA-256 caching in `~/.cache/jvm-mcp/`.
+  - Dynamic JMX management agent engagement for live process introspection.
   - Tabular CLI commands (`jvm-mcp list`, `ps`, `ls`).
 
 ---

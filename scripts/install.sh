@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env bash
+#!/usr/bin/env bash
 set -euo pipefail
 IFS=$'\n\t'
 OS="$(uname -s)"
@@ -30,4 +30,8 @@ tar -xzf "${TMP_DIR}/jvm-mcp.tar.gz" -C "${INSTALL_DIR}"
 BIN_DIR="${HOME}/.local/bin"
 if [[ -w "/usr/local/bin" ]]; then BIN_DIR="/usr/local/bin"; fi
 mkdir -p "${BIN_DIR}"
-ln -sf "${INSTALL_DIR}/jvm-mcp" "${BIN_DIR}/jvm-mcp"
+if [ -f "${INSTALL_DIR}/jvm-mcp" ]; then
+    ln -sf "${INSTALL_DIR}/jvm-mcp" "${BIN_DIR}/jvm-mcp"
+elif [ -f "${INSTALL_DIR}/jvm-mcp-${OS_NAME}-${ARCH}" ]; then
+    ln -sf "${INSTALL_DIR}/jvm-mcp-${OS_NAME}-${ARCH}" "${BIN_DIR}/jvm-mcp"
+fi
