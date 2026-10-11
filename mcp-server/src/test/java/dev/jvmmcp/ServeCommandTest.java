@@ -7,10 +7,13 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import dev.jvmmcp.core.util.SimpleJson;
 import picocli.CommandLine;
 
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
+import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.when;
@@ -168,10 +171,11 @@ class ServeCommandTest {
             assertThat(exitCode).isZero();
             
             String output = out.toString().trim();
-            java.util.Map<String, Object> response = dev.jvmmcp.core.util.SimpleJson.parseObject(output);
+            Map<String, Object> response = SimpleJson.parseObject(output);
             assertThat(response.get("jsonrpc")).isEqualTo("2.0");
             assertThat(response.get("id")).isEqualTo(1);
-            java.util.Map<String, Object> result = (java.util.Map<String, Object>) response.get("result");
+            Map<String, Object> result = asMap(response.get("result"));
+            assertThat(result).isNotNull();
             assertThat(result.get("protocolVersion")).isEqualTo("2024-11-05");
         } finally {
             System.setOut(originalOut);
@@ -197,11 +201,13 @@ class ServeCommandTest {
             assertThat(exitCode).isZero();
             
             String output = out.toString().trim();
-            java.util.Map<String, Object> response = dev.jvmmcp.core.util.SimpleJson.parseObject(output);
+            Map<String, Object> response = SimpleJson.parseObject(output);
             
-            java.util.Map<String, Object> result = (java.util.Map<String, Object>) response.get("result");
+            Map<String, Object> result = asMap(response.get("result"));
+            assertThat(result).isNotNull();
             assertThat(result.get("isError")).isEqualTo(true);
-            java.util.List<java.util.Map<String, Object>> content = (java.util.List<java.util.Map<String, Object>>) result.get("content");
+            List<Map<String, Object>> content = asListOfMaps(result.get("content"));
+            assertThat(content).isNotNull();
             assertThat(content.get(0).get("text").toString()).contains("Unknown tool: unknown_tool");
         } finally {
             System.setOut(originalOut);
@@ -227,16 +233,28 @@ class ServeCommandTest {
             assertThat(exitCode).isZero();
             
             String output = out.toString().trim();
-            java.util.Map<String, Object> response = dev.jvmmcp.core.util.SimpleJson.parseObject(output);
+            Map<String, Object> response = SimpleJson.parseObject(output);
             
-            java.util.Map<String, Object> result = (java.util.Map<String, Object>) response.get("result");
+            Map<String, Object> result = asMap(response.get("result"));
+            assertThat(result).isNotNull();
             assertThat(result.get("isError")).isEqualTo(true);
-            java.util.List<java.util.Map<String, Object>> content = (java.util.List<java.util.Map<String, Object>>) result.get("content");
+            List<Map<String, Object>> content = asListOfMaps(result.get("content"));
+            assertThat(content).isNotNull();
             assertThat(content.get(0).get("text").toString()).contains("Missing required argument: pid");
         } finally {
             System.setOut(originalOut);
             ServeCommand.testInStream = originalIn;
         }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> asMap(Object obj) {
+        return obj instanceof Map<?, ?> map ? (Map<String, Object>) map : null;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static List<Map<String, Object>> asListOfMaps(Object obj) {
+        return obj instanceof List<?> list ? (List<Map<String, Object>>) list : null;
     }
 
 }
