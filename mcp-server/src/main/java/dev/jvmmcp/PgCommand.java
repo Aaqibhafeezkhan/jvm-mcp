@@ -10,6 +10,7 @@ import java.util.concurrent.Callable;
 
 @Command(
     name = "pg",
+    mixinStandardHelpOptions = true,
     description = "Inspect PostgreSQL schema, missing indexes, and slow queries."
 )
 public class PgCommand implements Callable<Integer> {
@@ -31,9 +32,7 @@ public class PgCommand implements Callable<Integer> {
 
     @Override
     public Integer call() {
-        try {
-            PostgresSchemaReader reader = new PostgresSchemaReader(url, user, password);
-
+        try (PostgresSchemaReader reader = new PostgresSchemaReader(url, user, password)) {
             switch (action) {
                 case "schema" -> {
                     SchemaInfo info = reader.inspectSchema(schema);
@@ -56,7 +55,6 @@ public class PgCommand implements Callable<Integer> {
             return 0;
         } catch (Exception e) {
             System.err.println("Error inspecting PostgreSQL database: " + e.getMessage());
-            e.printStackTrace();
             return 1;
         }
     }

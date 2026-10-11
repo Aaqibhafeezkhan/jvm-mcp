@@ -10,6 +10,7 @@ import java.util.concurrent.Callable;
 
 @Command(
     name = "actuator",
+    mixinStandardHelpOptions = true,
     description = "Remotely inspect Spring Boot Actuator endpoints (health, metrics, startup)."
 )
 public class ActuatorCommand implements Callable<Integer> {

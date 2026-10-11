@@ -284,7 +284,7 @@ class BeansCommandTest {
             int exitCode = cmd.execute("beans", "--actuator", "https://1.1.1.1:9999",
                 "--actuator-token", "test-token", "--insecure");
 
-            assertThat(exitCode).isZero();
+            assertThat(exitCode).isEqualTo(1);
             String errOutput = err.toString();
             assertThat(errOutput).contains("Warning: --insecure disables TLS");
             assertThat(errOutput).doesNotContain("Warning: credentials are sent over plain HTTP");

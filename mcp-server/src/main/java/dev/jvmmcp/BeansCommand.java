@@ -110,6 +110,11 @@ public class BeansCommand implements Callable<Integer> {
             }
         }
 
+        if (report != null && report.discoverySource() != null && report.discoverySource().startsWith("ACTUATOR_UNREACHABLE")) {
+            System.err.println("[jvm-mcp] Error: Actuator endpoint was unreachable: " + actuatorUrl);
+            return 1;
+        }
+
         if (detailBeanName != null && !detailBeanName.isBlank()) {
             return printBeanDetail(client, report, detailBeanName);
         } else {

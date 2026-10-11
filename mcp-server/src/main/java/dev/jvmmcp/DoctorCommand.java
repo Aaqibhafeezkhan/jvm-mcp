@@ -5,7 +5,7 @@ import picocli.CommandLine.Command;
 
 import java.util.concurrent.Callable;
 
-@Command(name = "doctor", description = "Check environment readiness for JVM-MCP")
+@Command(name = "doctor", mixinStandardHelpOptions = true, description = "Check environment readiness for JVM-MCP")
 public class DoctorCommand implements Callable<Integer> {
 
     @Override
