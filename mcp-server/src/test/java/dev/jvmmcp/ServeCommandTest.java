@@ -247,6 +247,202 @@ class ServeCommandTest {
         }
     }
 
+    @Test
+    @DisplayName("ping returns empty result")
+    void shouldRespondToPing() throws Exception {
+        ServeCommand command = new ServeCommand(mockAttachService);
+        command.transport = "stdio";
+
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        PrintStream originalOut = System.out;
+        java.io.InputStream originalIn = ServeCommand.testInStream;
+        try {
+            System.setOut(new PrintStream(out));
+            String input = "{\"jsonrpc\": \"2.0\", \"id\": 10, \"method\": \"ping\"}\n";
+            ServeCommand.testInStream = new java.io.ByteArrayInputStream(input.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+
+            Integer exitCode = command.call();
+            assertThat(exitCode).isZero();
+
+            String output = out.toString().trim();
+            Map<String, Object> response = SimpleJson.parseObject(output);
+            assertThat(response.get("id")).isEqualTo(10);
+            assertThat(response.get("result")).isEqualTo(Map.of());
+        } finally {
+            System.setOut(originalOut);
+            ServeCommand.testInStream = originalIn;
+        }
+    }
+
+    @Test
+    @DisplayName("notifications do not emit responses")
+    void shouldHandleNotificationWithoutResponse() throws Exception {
+        ServeCommand command = new ServeCommand(mockAttachService);
+        command.transport = "stdio";
+
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        PrintStream originalOut = System.out;
+        java.io.InputStream originalIn = ServeCommand.testInStream;
+        try {
+            System.setOut(new PrintStream(out));
+            String input = "{\"jsonrpc\": \"2.0\", \"method\": \"notifications/initialized\"}\n";
+            ServeCommand.testInStream = new java.io.ByteArrayInputStream(input.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+
+            Integer exitCode = command.call();
+            assertThat(exitCode).isZero();
+            assertThat(out.toString().trim()).isEmpty();
+        } finally {
+            System.setOut(originalOut);
+            ServeCommand.testInStream = originalIn;
+        }
+    }
+
+    @Test
+    @DisplayName("unknown method returns -32601 Method not found")
+    void shouldReturnMethodNotFound() throws Exception {
+        ServeCommand command = new ServeCommand(mockAttachService);
+        command.transport = "stdio";
+
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        PrintStream originalOut = System.out;
+        java.io.InputStream originalIn = ServeCommand.testInStream;
+        try {
+            System.setOut(new PrintStream(out));
+            String input = "{\"jsonrpc\": \"2.0\", \"id\": 11, \"method\": \"nonexistent/method\"}\n";
+            ServeCommand.testInStream = new java.io.ByteArrayInputStream(input.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+
+            Integer exitCode = command.call();
+            assertThat(exitCode).isZero();
+
+            String output = out.toString().trim();
+            Map<String, Object> response = SimpleJson.parseObject(output);
+            assertThat(response.get("id")).isEqualTo(11);
+            Map<String, Object> error = asMap(response.get("error"));
+            assertThat(error).isNotNull();
+            assertThat(error.get("code")).isEqualTo(-32601);
+        } finally {
+            System.setOut(originalOut);
+            ServeCommand.testInStream = originalIn;
+        }
+    }
+
+    @Test
+    @DisplayName("list_jvms tool call invokes attach service")
+    void shouldHandleListJvmsTool() throws Exception {
+        when(mockAttachService.listJvms()).thenReturn(List.of());
+        ServeCommand command = new ServeCommand(mockAttachService);
+        command.transport = "stdio";
+
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        PrintStream originalOut = System.out;
+        java.io.InputStream originalIn = ServeCommand.testInStream;
+        try {
+            System.setOut(new PrintStream(out));
+            String input = "{\"jsonrpc\": \"2.0\", \"id\": 12, \"method\": \"tools/call\", \"params\": {\"name\": \"list_jvms\", \"arguments\": {}}}\n";
+            ServeCommand.testInStream = new java.io.ByteArrayInputStream(input.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+
+            Integer exitCode = command.call();
+            assertThat(exitCode).isZero();
+
+            String output = out.toString().trim();
+            Map<String, Object> response = SimpleJson.parseObject(output);
+            assertThat(response.get("id")).isEqualTo(12);
+            Map<String, Object> result = asMap(response.get("result"));
+            assertThat(result).isNotNull();
+            List<Map<String, Object>> content = asListOfMaps(result.get("content"));
+            assertThat(content.get(0).get("text")).isEqualTo("[]");
+        } finally {
+            System.setOut(originalOut);
+            ServeCommand.testInStream = originalIn;
+        }
+    }
+
+    @Test
+    @DisplayName("inspect_pg_schema tool with invalid URL returns error")
+    void shouldHandleInvalidPgUrl() throws Exception {
+        ServeCommand command = new ServeCommand(mockAttachService);
+        command.transport = "stdio";
+
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        PrintStream originalOut = System.out;
+        java.io.InputStream originalIn = ServeCommand.testInStream;
+        try {
+            System.setOut(new PrintStream(out));
+            String input = "{\"jsonrpc\": \"2.0\", \"id\": 13, \"method\": \"tools/call\", \"params\": {\"name\": \"inspect_pg_schema\", \"arguments\": {\"url\": \"http://evil.com\"}}}\n";
+            ServeCommand.testInStream = new java.io.ByteArrayInputStream(input.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+
+            Integer exitCode = command.call();
+            assertThat(exitCode).isZero();
+
+            String output = out.toString().trim();
+            Map<String, Object> response = SimpleJson.parseObject(output);
+            Map<String, Object> result = asMap(response.get("result"));
+            assertThat(result.get("isError")).isEqualTo(true);
+            List<Map<String, Object>> content = asListOfMaps(result.get("content"));
+            assertThat(content.get(0).get("text").toString()).contains("must start with jdbc:postgresql://");
+        } finally {
+            System.setOut(originalOut);
+            ServeCommand.testInStream = originalIn;
+        }
+    }
+
+    @Test
+    @DisplayName("tools/call with non-number pid returns error")
+    void shouldHandleNonNumberPid() throws Exception {
+        ServeCommand command = new ServeCommand(mockAttachService);
+        command.transport = "stdio";
+
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        PrintStream originalOut = System.out;
+        java.io.InputStream originalIn = ServeCommand.testInStream;
+        try {
+            System.setOut(new PrintStream(out));
+            String input = "{\"jsonrpc\": \"2.0\", \"id\": 14, \"method\": \"tools/call\", \"params\": {\"name\": \"get_memory_summary\", \"arguments\": {\"pid\": \"not_a_number\"}}}\n";
+            ServeCommand.testInStream = new java.io.ByteArrayInputStream(input.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+
+            Integer exitCode = command.call();
+            assertThat(exitCode).isZero();
+
+            String output = out.toString().trim();
+            Map<String, Object> response = SimpleJson.parseObject(output);
+            Map<String, Object> result = asMap(response.get("result"));
+            assertThat(result.get("isError")).isEqualTo(true);
+            List<Map<String, Object>> content = asListOfMaps(result.get("content"));
+            assertThat(content.get(0).get("text").toString()).contains("must be a number");
+        } finally {
+            System.setOut(originalOut);
+            ServeCommand.testInStream = originalIn;
+        }
+    }
+
+    @Test
+    @DisplayName("invalid JSON returns -32700 Parse error")
+    void shouldReturnParseErrorOnInvalidJson() throws Exception {
+        ServeCommand command = new ServeCommand(mockAttachService);
+        command.transport = "stdio";
+
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        PrintStream originalOut = System.out;
+        java.io.InputStream originalIn = ServeCommand.testInStream;
+        try {
+            System.setOut(new PrintStream(out));
+            String input = "{not-valid-json\n";
+            ServeCommand.testInStream = new java.io.ByteArrayInputStream(input.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+
+            Integer exitCode = command.call();
+            assertThat(exitCode).isZero();
+
+            String output = out.toString().trim();
+            Map<String, Object> response = SimpleJson.parseObject(output);
+            Map<String, Object> error = asMap(response.get("error"));
+            assertThat(error).isNotNull();
+            assertThat(error.get("code")).isEqualTo(-32700);
+        } finally {
+            System.setOut(originalOut);
+            ServeCommand.testInStream = originalIn;
+        }
+    }
+
     @SuppressWarnings("unchecked")
     private static Map<String, Object> asMap(Object obj) {
         return obj instanceof Map<?, ?> map ? (Map<String, Object>) map : null;

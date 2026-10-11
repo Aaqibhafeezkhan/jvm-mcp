@@ -38,13 +38,21 @@ public class ServeCommand implements Callable<Integer> {
     String actuatorUrl;
 
     private final JvmAttachService attachService;
+    private final java.io.InputStream inStream;
+    private final java.util.concurrent.ExecutorService requestExecutor = java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor();
+    private final Object responseLock = new Object();
 
     public ServeCommand() {
-        this.attachService = new JvmAttachService();
+        this(new JvmAttachService(), null);
     }
 
     public ServeCommand(JvmAttachService attachService) {
+        this(attachService, null);
+    }
+
+    public ServeCommand(JvmAttachService attachService, java.io.InputStream inStream) {
         this.attachService = attachService;
+        this.inStream = inStream;
     }
 
     // Visible for testing
@@ -83,23 +91,28 @@ public class ServeCommand implements Callable<Integer> {
             }
         }));
 
-        java.io.InputStream in = testInStream != null ? testInStream : System.in;
+        java.io.InputStream in = inStream != null ? inStream : (testInStream != null ? testInStream : System.in);
         try (BufferedReader reader = new BufferedReader(new InputStreamReader(in))) {
             String line;
             while ((line = reader.readLine()) != null) {
                 if (line.trim().isEmpty()) continue;
-                try {
-                    Map<String, Object> req = SimpleJson.parseObject(line);
-                    handleRequest(req);
-                } catch (Exception e) {
-                    System.err.println("[jvm-mcp] Error processing request: " + e.getMessage());
-                    Map<String, Object> errResp = new LinkedHashMap<>();
-                    errResp.put("jsonrpc", "2.0");
-                    errResp.put("id", null);
-                    errResp.put("error", Map.of("code", -32700, "message", "Parse error: " + e.getMessage()));
-                    sendResponse(errResp);
-                }
+                final String requestLine = line;
+                requestExecutor.submit(() -> {
+                    try {
+                        Map<String, Object> req = SimpleJson.parseObject(requestLine);
+                        handleRequest(req);
+                    } catch (Throwable e) {
+                        System.err.println("[jvm-mcp] Error processing request: " + e.getMessage());
+                        Map<String, Object> errResp = new LinkedHashMap<>();
+                        errResp.put("jsonrpc", "2.0");
+                        errResp.put("id", null);
+                        errResp.put("error", Map.of("code", -32700, "message", "Parse error: " + e.getMessage()));
+                        sendResponse(errResp);
+                    }
+                });
             }
+            requestExecutor.shutdown();
+            requestExecutor.awaitTermination(5, java.util.concurrent.TimeUnit.SECONDS);
         } catch (Exception e) {
             System.err.println("[jvm-mcp] Fatal server error: " + e.getMessage());
             return 1;
@@ -158,7 +171,7 @@ public class ServeCommand implements Callable<Integer> {
 
             response.put("error", Map.of("code", -32601, "message", "Method not found"));
             sendResponse(response);
-        } catch (Exception e) {
+        } catch (Throwable e) {
             System.err.println("[jvm-mcp] Internal error handling request: " + e.getMessage());
             response.put("error", Map.of("code", -32603, "message", "Internal error: " + e.getMessage()));
             sendResponse(response);
@@ -229,7 +242,9 @@ public class ServeCommand implements Callable<Integer> {
                 "inputSchema", Map.of(
                     "type", "object",
                     "properties", Map.of(
-                        "url", Map.of("type", "string", "description", "JDBC URL (e.g. jdbc:postgresql://localhost:5432/db)")),
+                        "url", Map.of("type", "string", "description", "JDBC URL (e.g. jdbc:postgresql://localhost:5432/db)"),
+                        "schema", Map.of("type", "string", "description", "Target schema (default: public)")
+                    ),
                     "required", List.of("url")
                 )
             ),
@@ -362,65 +377,74 @@ public class ServeCommand implements Callable<Integer> {
                     throw new IllegalStateException(attachResult.message());
                 }
                 
-                try (JmxConnectionManager jmxManager = attachResult.virtualMachine().isPresent() 
-                        ? JmxConnectionManager.connect(attachResult.virtualMachine().get(), pid) 
-                        : JmxConnectionManager.connectLocal()) {
-                        
-                    if ("get_memory_summary".equals(toolName)) {
-                        try (MemoryMXBeanClient memoryClient = new MemoryMXBeanClient(jmxManager.getMBeanServerConnection())) {
-                            content.add(Map.of("type", "text", "text", SimpleJson.toJson(memoryClient.getHeapSummary(pid))));
+                VirtualMachine vm = attachResult.virtualMachine().orElse(null);
+                boolean detached = false;
+                try {
+                    try (JmxConnectionManager jmxManager = vm != null 
+                            ? JmxConnectionManager.connect(vm, pid) 
+                            : JmxConnectionManager.connectLocal()) {
+                        detached = true;
+                            
+                        if ("get_memory_summary".equals(toolName)) {
+                            try (MemoryMXBeanClient memoryClient = new MemoryMXBeanClient(jmxManager.getMBeanServerConnection())) {
+                                content.add(Map.of("type", "text", "text", SimpleJson.toJson(memoryClient.getHeapSummary(pid))));
+                            }
+                        } else if ("get_heap_histogram".equals(toolName)) {
+                            dev.jvmmcp.core.jmx.HeapHistogramReader histoReader = new dev.jvmmcp.core.jmx.HeapHistogramReader();
+                            long limit = args != null && args.containsKey("limit") ? getLongArg(args, "limit", false) : 100L;
+                            if (limit <= 0) limit = 100L;
+                            if (limit > 1000) limit = 1000L;
+                            content.add(Map.of("type", "text", "text", SimpleJson.toJson(histoReader.readHistogram(jmxManager.getMBeanServerConnection(), pid, (int) limit))));
+                        } else if ("get_thread_diagnostics".equals(toolName)) {
+                            try (ThreadMXBeanClient threadClient = new ThreadMXBeanClient(jmxManager.getMBeanServerConnection())) {
+                                content.add(Map.of("type", "text", "text", SimpleJson.toJson(threadClient.getThreadSummary(pid))));
+                                content.add(Map.of("type", "text", "text", "Deadlock Report: " + SimpleJson.toJson(threadClient.detectDeadlocks())));
+                            }
+                        } else if ("get_thread_dump".equals(toolName)) {
+                            try (ThreadMXBeanClient threadClient = new ThreadMXBeanClient(jmxManager.getMBeanServerConnection())) {
+                                content.add(Map.of("type", "text", "text", SimpleJson.toJson(threadClient.getThreadDump(pid, false, false))));
+                            }
+                        } else if ("list_spring_beans".equals(toolName) || "get_bean_detail".equals(toolName)) {
+                            dev.jvmmcp.core.spring.SpringBeansClient beansClient = new dev.jvmmcp.core.spring.SpringBeansClient();
+                            String filterGlob = getStringArg(args, "filter", false);
+                            dev.jvmmcp.core.model.SpringBeansReport report = beansClient.inspectBeans(pid, vm, jmxManager.getMBeanServerConnection(), filterGlob);
+                            
+                            if ("list_spring_beans".equals(toolName)) {
+                                content.add(Map.of("type", "text", "text", SimpleJson.toJson(report)));
+                            } else {
+                                String beanName = getStringArg(args, "beanName", true);
+                                content.add(Map.of("type", "text", "text", SimpleJson.toJson(beansClient.getBeanDetail(report, beanName).orElse(null))));
+                            }
+                        } else if ("list_hikari_pools".equals(toolName)) {
+                            try (HikariMXBeanClient hikariClient = new HikariMXBeanClient(jmxManager.getMBeanServerConnection())) {
+                                content.add(Map.of("type", "text", "text", SimpleJson.toJson(hikariClient.getPools())));
+                            }
                         }
-                    } else if ("get_heap_histogram".equals(toolName)) {
-                        dev.jvmmcp.core.jmx.HeapHistogramReader histoReader = new dev.jvmmcp.core.jmx.HeapHistogramReader();
-                        long limit = args != null && args.containsKey("limit") ? getLongArg(args, "limit", false) : 100L;
-                        if (limit <= 0) limit = 100L;
-                        if (limit > 1000) limit = 1000L;
-                        content.add(Map.of("type", "text", "text", SimpleJson.toJson(histoReader.readHistogram(jmxManager.getMBeanServerConnection(), pid, (int) limit))));
-                    } else if ("get_thread_diagnostics".equals(toolName)) {
-                        try (ThreadMXBeanClient threadClient = new ThreadMXBeanClient(jmxManager.getMBeanServerConnection())) {
-                            content.add(Map.of("type", "text", "text", SimpleJson.toJson(threadClient.getThreadSummary(pid))));
-                            content.add(Map.of("type", "text", "text", "Deadlock Report: " + SimpleJson.toJson(threadClient.detectDeadlocks())));
-                        }
-                    } else if ("get_thread_dump".equals(toolName)) {
-                        try (ThreadMXBeanClient threadClient = new ThreadMXBeanClient(jmxManager.getMBeanServerConnection())) {
-                            content.add(Map.of("type", "text", "text", SimpleJson.toJson(threadClient.getThreadDump(pid, false, false))));
-                        }
-                    } else if ("list_spring_beans".equals(toolName) || "get_bean_detail".equals(toolName)) {
-                        dev.jvmmcp.core.spring.SpringBeansClient beansClient = new dev.jvmmcp.core.spring.SpringBeansClient();
-                        String filterGlob = getStringArg(args, "filter", false);
-                        dev.jvmmcp.core.model.SpringBeansReport report = beansClient.inspectBeans(pid, attachResult.virtualMachine().orElse(null), jmxManager.getMBeanServerConnection(), filterGlob);
-                        
-                        if ("list_spring_beans".equals(toolName)) {
-                            content.add(Map.of("type", "text", "text", SimpleJson.toJson(report)));
-                        } else {
-                            String beanName = getStringArg(args, "beanName", true);
-                            content.add(Map.of("type", "text", "text", SimpleJson.toJson(beansClient.getBeanDetail(report, beanName).orElse(null))));
-                        }
-                    } else if ("list_hikari_pools".equals(toolName)) {
-                        try (HikariMXBeanClient hikariClient = new HikariMXBeanClient(jmxManager.getMBeanServerConnection())) {
-                            content.add(Map.of("type", "text", "text", SimpleJson.toJson(hikariClient.getPools())));
-                        }
+                    }
+                } finally {
+                    if (vm != null && !detached) {
+                        try {
+                            attachService.detach(vm);
+                        } catch (Exception ignored) {}
                     }
                 }
             } else if ("inspect_pg_schema".equals(toolName) || "find_missing_indexes".equals(toolName) || "find_slow_queries".equals(toolName)) {
                 String url = getStringArg(args, "url", true);
-                if (!url.startsWith("jdbc:postgresql://localhost:") && !url.startsWith("jdbc:postgresql://localhost/") && !url.startsWith("jdbc:postgresql://127.0.0.1:") && !url.startsWith("jdbc:postgresql://127.0.0.1/")) {
-                    throw new IllegalArgumentException("SSRF Protection: JDBC URL must target localhost (got: " + url + ")");
-                }
+                PostgresSchemaReader.validateJdbcUrl(url);
                 String user = System.getenv("PG_USER");
                 String password = System.getenv("PG_PASSWORD");
-                PostgresSchemaReader reader = new PostgresSchemaReader(url, user, password);
-
-                if ("inspect_pg_schema".equals(toolName)) {
-                    String schema = getStringArg(args, "schema", false);
-                    if (schema == null) schema = "public";
-                    content.add(Map.of("type", "text", "text", SimpleJson.toJson(reader.inspectSchema(schema))));
-                } else if ("find_missing_indexes".equals(toolName)) {
-                    String schema = getStringArg(args, "schema", false);
-                    if (schema == null) schema = "public";
-                    content.add(Map.of("type", "text", "text", SimpleJson.toJson(reader.findMissingIndexes(schema))));
-                } else {
-                    content.add(Map.of("type", "text", "text", SimpleJson.toJson(reader.findSlowQueries())));
+                try (PostgresSchemaReader reader = new PostgresSchemaReader(url, user, password)) {
+                    if ("inspect_pg_schema".equals(toolName)) {
+                        String schema = getStringArg(args, "schema", false);
+                        if (schema == null) schema = "public";
+                        content.add(Map.of("type", "text", "text", SimpleJson.toJson(reader.inspectSchema(schema))));
+                    } else if ("find_missing_indexes".equals(toolName)) {
+                        String schema = getStringArg(args, "schema", false);
+                        if (schema == null) schema = "public";
+                        content.add(Map.of("type", "text", "text", SimpleJson.toJson(reader.findMissingIndexes(schema))));
+                    } else {
+                        content.add(Map.of("type", "text", "text", SimpleJson.toJson(reader.findSlowQueries())));
+                    }
                 }
             } else if (toolName.startsWith("get_actuator_")) {
                 String url = getStringArg(args, "url", true);
@@ -468,8 +492,10 @@ public class ServeCommand implements Callable<Integer> {
     }
 
     private void sendResponse(Map<String, Object> response) {
-        System.out.println(SimpleJson.toJson(response));
-        System.out.flush();
+        synchronized (responseLock) {
+            System.out.println(SimpleJson.toJson(response));
+            System.out.flush();
+        }
     }
 }
 
