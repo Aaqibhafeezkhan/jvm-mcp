@@ -143,7 +143,7 @@ class ThreadMXBeanClientTest {
 
             assertThat(detail).isNotNull();
             assertThat(detail.lockOwnerName()).isEqualTo("holding-thread");
-            assertThat(detail.lockOwnerId()).isEqualTo(holdingThread.getId());
+            assertThat(detail.lockOwnerId()).isEqualTo(holdingThread.threadId());
             assertThat(detail.stackTrace()).isNotEmpty();
         } finally {
             keepHolding.set(false);

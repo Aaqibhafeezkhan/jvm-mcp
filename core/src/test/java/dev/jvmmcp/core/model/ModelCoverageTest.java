@@ -116,7 +116,7 @@ class ModelCoverageTest {
         assertThat(ThreadDetail.from(null)).isNull();
 
         ThreadMXBean threadMXBean = ManagementFactory.getThreadMXBean();
-        ThreadInfo currentInfo = threadMXBean.getThreadInfo(Thread.currentThread().getId(), Integer.MAX_VALUE);
+        ThreadInfo currentInfo = threadMXBean.getThreadInfo(Thread.currentThread().threadId(), Integer.MAX_VALUE);
 
         ThreadDetail detail = ThreadDetail.from(currentInfo);
         assertThat(detail).isNotNull();

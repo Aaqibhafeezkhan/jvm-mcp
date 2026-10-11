@@ -208,21 +208,6 @@ public class ThreadMXBeanClient implements ThreadDiagnosticPort {
         }
     }
 
-    /**
-     * Enables thread contention monitoring on the target JVM when supported, so blocked
-     * threads report real contention durations instead of -1.
-     *
-     * @return true if contention timings are monitored after the call
-     */
-    private boolean ensureContentionMonitoring(ThreadMXBean threadMXBean) throws IOException {
-        if (!threadMXBean.isThreadContentionMonitoringSupported()) {
-            return false;
-        }
-        if (!threadMXBean.isThreadContentionMonitoringEnabled()) {
-            threadMXBean.setThreadContentionMonitoringEnabled(true);
-        }
-        return threadMXBean.isThreadContentionMonitoringEnabled();
-    }
 
     @Override
     public void close() throws Exception {
