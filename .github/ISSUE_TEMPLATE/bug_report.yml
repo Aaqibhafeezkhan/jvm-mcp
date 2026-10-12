@@ -10,7 +10,7 @@ body:
     attributes:
       label: JVM-MCP Version / Commit
       description: What version or git commit hash are you using?
-      placeholder: e.g. 1.0.0-SNAPSHOT (commit 9040a04)
+      placeholder: e.g. 1.1.0-SNAPSHOT (commit 9040a04)
     validations:
       required: true
   - type: input

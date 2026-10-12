@@ -136,7 +136,7 @@ public class ServeCommand implements Callable<Integer> {
                 response.put("result", Map.of(
                     "protocolVersion", "2024-11-05",
                     "capabilities", Map.of("tools", Map.of()),
-                    "serverInfo", Map.of("name", "jvm-mcp", "version", JvmMcp.VERSION)
+                    "serverInfo", Map.of("name", "jvm-mcp", "version", JvmMcp.getVersion())
                 ));
                 sendResponse(response);
                 return;

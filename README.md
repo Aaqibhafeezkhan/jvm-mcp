@@ -1,4 +1,4 @@
-﻿# JVM-MCP
+# JVM-MCP
 
 > **Zero-dependency Java 21 Model Context Protocol (MCP) server for live Spring Boot and JVM runtime inspection.**  
 > Provide Claude, Cursor, and AI coding assistants with real-time context on memory, threads, Spring beans, and database connection pools without modifying target application code.
@@ -76,7 +76,7 @@ Add `jvm-mcp` to your `claude_desktop_config.json`:
 }
 ```
 
-*(If running from the repository fat JAR directly: `"command": "java", "args": ["-jar", "/path/to/jvm-mcp-server-1.0.0-SNAPSHOT.jar", "serve"]`)*
+*(If running from the repository fat JAR directly: `"command": "java", "args": ["-jar", "/path/to/jvm-mcp-server-1.1.0-SNAPSHOT.jar", "serve"]`)*
 
 ### Cursor / Windsurf
 

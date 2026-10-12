@@ -1,4 +1,4 @@
-﻿# Contributing to JVM-MCP
+# Contributing to JVM-MCP
 
 Thank you for contributing to JVM-MCP! We welcome issues, architectural feedback, and pull requests from developers passionate about JVM runtime diagnostics and AI agent tooling.
 
@@ -39,7 +39,7 @@ Before writing code, please review these foundational design decisions:
 ./mvnw clean verify
 
 # Run CLI locally
-java -jar mcp-server/target/jvm-mcp-server-1.0.0-SNAPSHOT.jar list
+java -jar mcp-server/target/jvm-mcp-server-1.1.0-SNAPSHOT.jar list
 ```
 
 ---
