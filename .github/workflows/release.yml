@@ -4,15 +4,21 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
 
 permissions:
   contents: write
 
 jobs:
-  build-and-release:
-    name: Build and Release (${{ matrix.os }})
+  # ---------------------------------------------------------------------------
+  # Stage 1: Multi-Platform Build & Verification Matrix
+  # ---------------------------------------------------------------------------
+  build-matrix:
+    name: Build (${{ matrix.suffix }})
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
     strategy:
+      fail-fast: false
       matrix:
         include:
           - os: ubuntu-latest
@@ -23,10 +29,10 @@ jobs:
             suffix: windows-amd64
     steps:
       - name: Checkout Source
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        uses: actions/checkout@v4
 
       - name: Set up JDK 21
-        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v5.0.0
+        uses: actions/setup-java@v4
         with:
           java-version: '21'
           distribution: 'temurin'
@@ -34,51 +40,76 @@ jobs:
 
       - name: Build Fat JAR
         shell: bash
-        run: ./mvnw clean package -B 
+        run: ./mvnw clean package -B
 
-      - name: Build Native Executable with jpackage
+      - name: Build Native Distribution Package
         shell: bash
         run: |
-          # Use jlink and jpackage to bundle the JRE and Attach API
-          jlink --add-modules java.base,java.management,java.net.http,java.sql,java.naming,jdk.attach,jdk.management,jdk.management.agent,java.instrument,jdk.internal.jvmstat --output custom-jre --strip-debug --no-man-pages --no-header-files
-          
+          # Use jlink to assemble custom minimal JRE with required modules
+          jlink --add-modules java.base,java.management,java.net.http,java.sql,java.naming,jdk.attach,jdk.management,jdk.management.agent,java.instrument,jdk.internal.jvmstat \
+                --output custom-jre \
+                --strip-debug \
+                --no-man-pages \
+                --no-header-files
+
+          # Dynamically locate the shaded fat jar (eliminating hardcoded SNAPSHOT)
+          SHADED_JAR=$(find mcp-server/target -maxdepth 1 -name "jvm-mcp-server-*.jar" ! -name "original-*" | head -n 1)
+          if [ -z "$SHADED_JAR" ] || [ ! -f "$SHADED_JAR" ]; then
+            echo "Error: Could not locate shaded jar matching jvm-mcp-server-*.jar in mcp-server/target" >&2
+            exit 1
+          fi
+          echo "Found shaded jar: $SHADED_JAR"
+          JAR_NAME=$(basename "$SHADED_JAR")
+
           if [ "${{ matrix.os }}" == "windows-latest" ]; then
-            jpackage --type app-image --name jvm-mcp --input mcp-server/target --main-jar jvm-mcp-server-1.0.0-SNAPSHOT.jar --main-class dev.jvmmcp.JvmMcp --runtime-image custom-jre --dest build-out
+            jpackage --type app-image \
+                     --name jvm-mcp \
+                     --input mcp-server/target \
+                     --main-jar "$JAR_NAME" \
+                     --main-class dev.jvmmcp.JvmMcp \
+                     --runtime-image custom-jre \
+                     --dest build-out
             cd build-out
-            7z a jvm-mcp-${{ matrix.suffix }}.zip jvm-mcp
+            7z a "../jvm-mcp-${{ matrix.suffix }}.zip" jvm-mcp
             cd ..
-          elif [ "${{ matrix.os }}" == "macos-latest" ]; then
-            mkdir -p dist
-            cp -r custom-jre dist/
-            cp mcp-server/target/jvm-mcp-server-*.jar dist/app.jar
-            echo '#!/bin/bash' > dist/jvm-mcp
-            echo 'DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"' >> dist/jvm-mcp
-            echo 'exec "$DIR/custom-jre/bin/java" -jar "$DIR/app.jar" "$@"' >> dist/jvm-mcp
-            chmod +x dist/jvm-mcp
-            cp dist/jvm-mcp dist/jvm-mcp-${{ matrix.suffix }}
-            tar -czvf jvm-mcp-${{ matrix.suffix }}.tar.gz -C dist .
           else
-            # Linux
+            # Linux and macOS
             mkdir -p dist
             cp -r custom-jre dist/
-            cp mcp-server/target/jvm-mcp-server-*.jar dist/app.jar
-            echo '#!/bin/bash' > dist/jvm-mcp
-            echo 'DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"' >> dist/jvm-mcp
-            echo 'exec "$DIR/custom-jre/bin/java" -jar "$DIR/app.jar" "$@"' >> dist/jvm-mcp
+            cp "$SHADED_JAR" dist/app.jar
+
+            # Embed canonical symlink-safe recursive bash launcher
+            cat << 'EOF' > dist/jvm-mcp
+#!/usr/bin/env bash
+set -e
+
+SOURCE="${BASH_SOURCE[0]}"
+while [ -h "$SOURCE" ] || [ -L "$SOURCE" ]; do
+  DIR="$( cd -P "$( dirname "$SOURCE" )" >/dev/null 2>&1 && pwd )"
+  SOURCE="$(readlink "$SOURCE")"
+  [[ $SOURCE != /* ]] && SOURCE="$DIR/$SOURCE"
+done
+DIR="$( cd -P "$( dirname "$SOURCE" )" >/dev/null 2>&1 && pwd )"
+
+exec "$DIR/custom-jre/bin/java" -jar "$DIR/app.jar" "$@"
+EOF
             chmod +x dist/jvm-mcp
-            cp dist/jvm-mcp dist/jvm-mcp-${{ matrix.suffix }}
-            tar -czvf jvm-mcp-${{ matrix.suffix }}.tar.gz -C dist .
+            cp dist/jvm-mcp "dist/jvm-mcp-${{ matrix.suffix }}"
+            tar -czvf "jvm-mcp-${{ matrix.suffix }}.tar.gz" -C dist .
           fi
 
       - name: Verify Executable (Linux/macOS)
         if: runner.os != 'Windows'
         run: |
           mkdir -p verify_app
-          tar -xzf jvm-mcp-${{ matrix.suffix }}.tar.gz -C verify_app
-          # On macOS/Linux, the tar contains a bin/java folder and jvm-mcp executable
-          # Let's run it using the script inside the current directory
-          ./verify_app/jvm-mcp-${{ matrix.suffix }} --version
-          echo "Linux/macOS binary verified successfully."
+          tar -xzf "jvm-mcp-${{ matrix.suffix }}.tar.gz" -C verify_app
+          # Direct verification
+          ./verify_app/jvm-mcp --version
+          # Symlink resolution verification
+          mkdir -p verify_app/test_bin
+          ln -s ../jvm-mcp verify_app/test_bin/jvm-mcp
+          ./verify_app/test_bin/jvm-mcp --version
+          echo "Linux/macOS executable verified successfully."
 
       - name: Verify Executable (Windows)
         if: runner.os == 'Windows'
@@ -92,10 +123,50 @@ jobs:
           }
           Write-Host "Windows app-image verified successfully."
 
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
         with:
-          generate_release_notes: true
+          name: jvm-mcp-${{ matrix.suffix }}
+          path: jvm-mcp-${{ matrix.suffix }}.*
+          if-no-files-found: error
+
+  # ---------------------------------------------------------------------------
+  # Stage 2: Checksum Calculation & Atomic Release Publication
+  # ---------------------------------------------------------------------------
+  publish-release:
+    name: Publish Release
+    needs: build-matrix
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Calculate Checksums
+        run: |
+          cd artifacts
+          echo "Release artifacts present in workspace:"
+          ls -la
+
+          # Generate individual SHA-256 files for each archive
+          for file in jvm-mcp-*.tar.gz jvm-mcp-*.zip; do
+            if [ -f "$file" ]; then
+              sha256sum "$file" > "${file}.sha256"
+            fi
+          done
+
+          # Generate canonical checksums.txt containing all checksums
+          sha256sum jvm-mcp-*.tar.gz jvm-mcp-*.zip > checksums.txt
+
+          echo "Canonical checksums.txt:"
+          cat checksums.txt
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
           files: |
-            jvm-mcp-*.tar.gz
-            build-out/jvm-mcp-*.zip
+            artifacts/*
+          generate_release_notes: true
