@@ -5,6 +5,11 @@ on:
     tags:
       - 'v*'
   workflow_dispatch:
+    inputs:
+      tag_name:
+        description: 'Release tag (e.g. v1.1.0)'
+        required: false
+        type: string
 
 permissions:
   contents: write
@@ -79,20 +84,20 @@ jobs:
             cp "$SHADED_JAR" dist/app.jar
 
             # Embed canonical symlink-safe recursive bash launcher
-            cat << 'EOF' > dist/jvm-mcp
-#!/usr/bin/env bash
-set -e
-
-SOURCE="${BASH_SOURCE[0]}"
-while [ -h "$SOURCE" ] || [ -L "$SOURCE" ]; do
-  DIR="$( cd -P "$( dirname "$SOURCE" )" >/dev/null 2>&1 && pwd )"
-  SOURCE="$(readlink "$SOURCE")"
-  [[ $SOURCE != /* ]] && SOURCE="$DIR/$SOURCE"
-done
-DIR="$( cd -P "$( dirname "$SOURCE" )" >/dev/null 2>&1 && pwd )"
-
-exec "$DIR/custom-jre/bin/java" -jar "$DIR/app.jar" "$@"
-EOF
+            {
+              echo '#!/usr/bin/env bash'
+              echo 'set -e'
+              echo ''
+              echo 'SOURCE="${BASH_SOURCE[0]}"'
+              echo 'while [ -h "$SOURCE" ] || [ -L "$SOURCE" ]; do'
+              echo '  DIR="$( cd -P "$( dirname "$SOURCE" )" >/dev/null 2>&1 && pwd )"'
+              echo '  SOURCE="$(readlink "$SOURCE")"'
+              echo '  [[ $SOURCE != /* ]] && SOURCE="$DIR/$SOURCE"'
+              echo 'done'
+              echo 'DIR="$( cd -P "$( dirname "$SOURCE" )" >/dev/null 2>&1 && pwd )"'
+              echo ''
+              echo 'exec "$DIR/custom-jre/bin/java" -jar "$DIR/app.jar" "$@"'
+            } > dist/jvm-mcp
             chmod +x dist/jvm-mcp
             cp dist/jvm-mcp "dist/jvm-mcp-${{ matrix.suffix }}"
             tar -czvf "jvm-mcp-${{ matrix.suffix }}.tar.gz" -C dist .
@@ -167,6 +172,7 @@ EOF
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ inputs.tag_name || github.ref_name }}
           files: |
             artifacts/*
           generate_release_notes: true
