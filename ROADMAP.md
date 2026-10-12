@@ -1,4 +1,4 @@
-﻿# Project Roadmap & Contribution Scope
+# Project Roadmap & Contribution Scope
 
 > Real-time JVM diagnostic tools for AI coding assistants via Model Context Protocol (MCP).
 
@@ -53,13 +53,15 @@ This roadmap outlines completed development milestones, architectural priorities
 
 - [x] **Phase 7: Multi-Platform Bundling Pipeline**
   - Abandoned GraalVM Native Image due to `jdk.attach` C++ native library loading constraints under Closed-World AOT.
-  - Implemented `jlink` custom JRE stripping for Linux/macOS (~40MB footprint).
+  - Implemented `jlink` custom JRE stripping for Linux/macOS (~40MB footprint) with recursive symlink-safe bash launcher.
   - Configured `jpackage` bundling for zero-dependency Windows `.exe` installers.
+  - Implemented two-stage collector release pipeline in GitHub Actions (`build-matrix` + `publish-release`) with SHA-256 checksum generation (`checksums.txt`).
 
 - [x] **Phase 8: Ecosystem & Package Managers**
-  - Universal `install.sh` (`curl | bash`) with OS and architecture detection.
+  - Universal `install.sh` (`curl | bash`) with OS/architecture detection and pre-extraction SHA-256 cryptographic verification.
   - Environment readiness diagnostics command (`jvm-mcp doctor`).
-  - Homebrew Formula specification (`homebrew/jvm-mcp.rb`).
+  - Homebrew Formula specification (`homebrew/jvm-mcp.rb`) with multi-architecture UNIX blocks and `libexec` installation.
+  - Dynamic runtime version resolution hierarchy with Picocli `IVersionProvider`.
 
 ---
 

@@ -59,6 +59,56 @@ Distributed as a standalone multi-platform bundle with a stripped custom runtime
 
 ---
 
+## Installation
+
+Pre-built standalone distributions include a minimal modular JRE via `jlink` (Linux/macOS) and `jpackage` (Windows). No pre-installed JDK is required on the host system.
+
+### One-Line Universal Installer (Linux & macOS)
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/oscarbol09/jvm-mcp/main/install.sh | bash
+```
+
+The script automatically detects your platform architecture (`linux-amd64`, `linux-aarch64`, `macos-aarch64`, `macos-amd64`), verifies the cryptographic SHA-256 checksum against the release manifest, and unpacks `jvm-mcp` into `~/.local/bin`.
+
+### Homebrew (macOS & Linux)
+
+```bash
+brew install oscarbol09/tap/jvm-mcp
+```
+
+### Pre-Compiled Standalone Archives
+
+Download release packages and corresponding `.sha256` checksums from [GitHub Releases](https://github.com/oscarbol09/jvm-mcp/releases):
+
+| Platform / Architecture | Archive Name | Runtime Packaging |
+| :--- | :--- | :--- |
+| Linux (x86_64) | `jvm-mcp-linux-amd64.tar.gz` | Modular JRE (`jlink`) + symlink-safe launcher |
+| macOS (Apple Silicon ARM64) | `jvm-mcp-macos-aarch64.tar.gz` | Modular JRE (`jlink`) + symlink-safe launcher |
+| Windows (x86_64) | `jvm-mcp-windows-amd64.zip` | Standalone application image (`jpackage` .exe) |
+
+Verify checksum and unpack:
+```bash
+# Example for Linux
+sha256sum -c jvm-mcp-linux-amd64.tar.gz.sha256
+tar -xzf jvm-mcp-linux-amd64.tar.gz
+./jvm-mcp --version
+```
+
+### Building From Source
+
+Requires JDK 21+ and Git:
+```bash
+git clone https://github.com/oscarbol09/jvm-mcp.git
+cd jvm-mcp
+./mvnw clean package -DskipTests
+
+# Run the packaged fat JAR directly:
+java -jar mcp-server/target/jvm-mcp-server-1.1.0-SNAPSHOT.jar --version
+```
+
+---
+
 ## Quickstart: MCP Client Setup
 
 ### Claude Desktop
