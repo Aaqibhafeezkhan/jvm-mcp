@@ -5,37 +5,62 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased] - 1.0.0-SNAPSHOT
+## [Unreleased]
+
+## [1.1.0] - 2026-10-11
 
 ### Added
-- **Distribution**: Built OS-matrix deployment pipeline generating custom JREs via jlink and Windows installers via jpackage, pivoting away from GraalVM Native Image due to jdk.attach dynamic loading constraints.
-- **Core Diagnostics**: Live JVM discovery via JDK Attach API (`JvmAttachService`).
-- **Memory & Heap**: Inspection of heap regions, GC metrics, and allocation pressure (`MemoryMXBeanClient`).
-- **Threads**: Thread dump extraction and cyclic deadlock detection (`ThreadMXBeanClient`).
-- **Spring Beans**: ApplicationContext bean hierarchy inspection with JMX fallback (`SpringBeansClient`).
-- **Database Pools**: Live metric extraction for HikariCP connection pools (`HikariMXBeanClient`).
-- **PostgreSQL Inspection**: Pure JDBC schema metadata reader, sequential scan bottleneck detection, and slow query profiling via `pg_stat_statements` (`PostgresSchemaReader`).
-- **Remote Actuator**: Lightweight generic HTTP client for Spring Boot Actuator endpoints (`/health`, `/metrics`, `/startup`) with `jvm-mcp actuator` CLI and MCP integration.
-- **Security**: Basic and Bearer auth support for Actuator endpoints, plus TLS `--insecure` override.
-- **Server**: Stdio JSON-RPC Model Context Protocol (MCP) server implementation (`ServeCommand`).
-- **Infrastructure**: Multi-OS GitHub Actions CI matrix with automated JaCoCo coverage summaries.
+- **Concurrency**: Dispatched incoming MCP JSON-RPC tool requests to Java 21 Virtual Threads (`Executors.newVirtualThreadPerTaskExecutor()`) to eliminate Head-of-Line blocking on ping heartbeats during long-running tool executions.
+- **Thread Safety**: Added synchronized monitor locking (`synchronized (responseLock)`) for all outbound stdio JSON-RPC responses to prevent frame interleaving.
+- **Diagnostics CLI**: Implemented `jvm-mcp doctor` subcommand (`DoctorCommand`) validating host OS readiness, Java 21 runtime version, and Attach API user matching / `ptrace_scope` permissions.
+- **Dependency Management**: Centralized test dependencies in root POM using `testcontainers-bom` to prevent fractured partial updates by automated tools.
 
 ### Changed
-- **Testing**: Elevated test coverage across all `core` and `server` modules to 100% on critical paths.
-- **Architecture**: Enforced Deep Modules and SOLID Port interfaces (`MemoryDiagnosticPort`, `ThreadDiagnosticPort`, `HikariDiagnosticPort`).
-- **Documentation**: Standardized repository language to English and streamlined README formatting.
+- **Build Architecture**: Formally retired obsolete `native` module from the Maven reactor following the architectural transition to `jlink`/`jpackage`.
+- **MCP Server**: Captured unhandled runtime exceptions with standard JSON-RPC `-32603` (Internal Error) responses instead of unhandled thread terminations.
+- **Logging Hygiene**: Bound SLF4J logging strictly to `System.err` via `simplelogger.properties` in `mcp-server` to keep `stdout` pure for JSON-RPC transport framing.
+- **Shade Plugin**: Upgraded `maven-shade-plugin` to `3.6.2`.
 
 ### Fixed
-- **Testing Frameworks**: Fixed GitHub Actions IPv6 vs IPv4 loopback resolution causing random ConnectExceptions on Ubuntu/macOS by binding MockWebServer to 0.0.0.0.
-- **Code Coverage**: Adjusted Pitest mutation thresholds and Jacoco boundaries to account for missing Docker daemon on Windows GitHub runners.
-- **PostgreSQL Heuristics Testing**: Patched missing index heuristic testing to correctly execute >100 sequential scans to overcome Postgres internal test thresholds.
-- **Resource Management**: Balanced `try-with-resources` blocks in CLI commands to prevent connection leaks.
-- **Attach Lifecycle**: Fixed nullable `VirtualMachine` references within the `AttachResult.success` factory.
-- **Artifact Names**: Handled `-jar` display names edge cases during main class extraction.
+- **CLI Exit Codes**: Ensured `BeansCommand` returns exit code `1` when Actuator endpoints are unreachable instead of silently exiting with code `0`.
+- **CLI Usability**: Enabled `mixinStandardHelpOptions = true` across `DoctorCommand`, `PgCommand`, and `ActuatorCommand` so `--help` exits cleanly with code `0`.
+- **Lifecycle Leaks**: Added guaranteed `try-finally` detachment for `VirtualMachine` instances if JMX connection initialization throws an exception in `ServeCommand`.
+- **Testing Hermeticity**: Replaced external Docker Testcontainers in `HikariMXBeanClientTest` with in-memory H2 database instances for 100% hermetic execution across Windows, macOS, and Linux runners.
+- **Distribution Scripts**: Corrected Apple Silicon architecture resolution (`macos-aarch64`) and symlink verification in `install.sh`.
 
 ### Security
-- **SSRF Protection**: Enforced strict host injection natively inside Java 21 HttpClient for Actuator queries, preventing dynamic URL header injection.
-- **OOM Defenses**: Implemented a 30MB HttpResponse limiting handler to prevent Billion Laughs and payload Tarpits from exhausting the JVM-MCP agent memory.
-- Added Gitleaks automated secret scanning in the CI pipeline.
-- Explicit credential warnings when submitting Actuator credentials over plain HTTP.
+- **PostgreSQL JDBC SSRF & RCE Hardening**: Implemented canonical URI validation in `PostgresSchemaReader`:
+  - Rejects `userinfo` evasion attempts and multi-host syntax.
+  - Enforces loopback host resolution (`localhost`, `127.0.0.1`, `::1`).
+  - Strips dangerous driver properties (`socketFactory`, `sslrootcert`, `sslkey`, `sslpassword`, `options=`).
+  - Sanitizes SQL text in slow query reports to redact embedded passwords.
+- **ReDoS Mitigation**: Hardened `GlobMatcher` by collapsing consecutive wildcards (`*+` -> `*`) and bounding maximum pattern length to 256 characters.
+- **JSON Recursion Boundary**: Implemented `MAX_SERIALIZATION_DEPTH = 100` in `SimpleJson` to guard against `StackOverflowError` caused by cyclic object graphs.
 
+---
+
+## [1.0.1] - 2026-10-09
+
+### Added
+- Multi-OS GitHub Actions release matrix compiling stripped JREs via `jlink` (Linux/macOS) and `jpackage` app-images (Windows).
+- Universal installation script `install.sh` for one-command installation via `curl | bash`.
+- Homebrew formula specification for multi-architecture macOS and Linux installation.
+
+### Fixed
+- Fixed IPv6 vs IPv4 loopback resolution timeouts in MockWebServer during GitHub Actions CI runs.
+- Guarded JMX client connections with `try-with-resources` to prevent file descriptor leaks.
+
+---
+
+## [1.0.0] - 2026-10-09
+
+### Added
+- Core Attach API discovery engine (`JvmAttachService`) detecting local JVM processes, PIDs, and frameworks (Spring Boot, Quarkus, Micronaut).
+- Memory inspection engine (`MemoryMXBeanClient`) reporting heap/non-heap regions, GC pauses, and allocation pressure.
+- Thread diagnostics engine (`ThreadMXBeanClient`) reporting thread states, full stack dumps, and detecting circular deadlocks.
+- Spring Boot ApplicationContext inspection (`SpringBeansClient`) listing beans, autowired dependencies, and initialization scopes via dynamic JMX.
+- HikariCP connection pool diagnostics (`HikariMXBeanClient`) analyzing pool saturation, active connections, and clock leap heuristics.
+- PostgreSQL schema inspector (`PostgresSchemaReader`) reporting table structures, row estimates, missing indexes, and slow queries.
+- Remote Actuator client (`ActuatorClient`) querying `/health`, `/metrics`, and `/startup` endpoints with Basic/Bearer auth support.
+- In-house JSON-RPC 2.0 stdio server (`ServeCommand`) implementing the Model Context Protocol (MCP).
+- Terminal CLI interface powered by Picocli (`list`, `memory`, `threads`, `beans`, `pg`, `actuator`, `serve`).

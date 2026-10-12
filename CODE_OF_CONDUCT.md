@@ -1,4 +1,4 @@
-# Contributor Covenant Code of Conduct
+﻿# Contributor Covenant Code of Conduct
 
 ## Our Pledge
 
@@ -32,4 +32,4 @@ This Code of Conduct applies within all community spaces, including issues, pull
 
 ## Enforcement & Reporting
 
-Instances of abusive, harassing, or otherwise unacceptable behavior may be reported to the project maintainers. All complaints will be reviewed and investigated promptly and fairly.
+Instances of abusive, harassing, or otherwise unacceptable behavior may be reported to the project maintainer at `oscarbolanos09@gmail.com`. All complaints will be reviewed and investigated promptly and fairly.
