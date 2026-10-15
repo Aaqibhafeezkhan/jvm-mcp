@@ -1,7 +1,7 @@
 # JVM-MCP
 
-> **Zero-dependency Java 21 Model Context Protocol (MCP) server for live Spring Boot and JVM runtime inspection.**  
-> Provide Claude, Cursor, and AI coding assistants with real-time context on memory, threads, Spring beans, and database connection pools without modifying target application code.
+> **Self-contained Java 21 Model Context Protocol (MCP) server with zero runtime framework overhead.**  
+> Provide Claude, Cursor, and AI coding assistants with real-time runtime context on memory, threads, Spring beans, and database connection pools without modifying target application code.
 
 [![CI](https://github.com/oscarbol09/jvm-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/oscarbol09/jvm-mcp/actions/workflows/ci.yml)
 [![Java Version](https://img.shields.io/badge/Java-21+-007396?logo=openjdk&logoColor=white)](https://jdk.java.net/21/)
@@ -18,6 +18,7 @@
 - [Exposed MCP Tools](#exposed-mcp-tools)
 - [Architectural Principles](#architectural-principles)
 - [Security & Defense Boundaries](#security--defense-boundaries)
+- [Platform & Runtime Compatibility Matrix](#platform--runtime-compatibility-matrix)
 - [Known Limitations and Trade-offs](#known-limitations-and-trade-offs)
 - [Contributing & Governance](#contributing--governance)
 - [License](#license)
@@ -196,7 +197,7 @@ The server exposes 14 diagnostic tools to AI assistants:
 
 - **Virtual Threads & Thread-Safe Stdio:** Each incoming JSON-RPC request executes on a dedicated Java 21 Virtual Thread (`Executors.newVirtualThreadPerTaskExecutor()`). Outbound `stdout` writes are synchronized on a dedicated monitor lock to prevent frame interleaving.
 - **Dynamic JDK Management Agent:** JMX access is initialized dynamically via `VirtualMachine.startLocalManagementAgent()`, falling back to standard `$JAVA_HOME/lib/management-agent.jar`. No custom agent bytecode is injected into target processes.
-- **Zero External Runtime Dependencies:** Built with zero runtime framework overhead: custom JSON-RPC parser engine (`SimpleJson`), direct JDK `HttpClient`, and Picocli for CLI execution.
+- **Zero Runtime Framework Overhead:** Operates with no heavy web or application frameworks (no Spring Boot runtime, Quarkus, Netty, Jackson, or reactive engines). It uses a lightweight custom JSON-RPC engine (`SimpleJson`), native JDK `HttpClient`, and Picocli for CLI execution, ensuring a cold start under 150ms.
 
 ---
 
@@ -209,9 +210,22 @@ The server exposes 14 diagnostic tools to AI assistants:
 
 ---
 
+## Platform & Runtime Compatibility Matrix
+
+| Runtime Environment | Architecture / Vendor | Status | Operational Notes |
+| :--- | :--- | :--- | :--- |
+| **Linux** | x86_64, aarch64 | Supported | Standard HotSpot Attach API. If `yama/ptrace_scope` is >= 1, non-child attach requires matching UID or `CAP_SYS_PTRACE`. |
+| **macOS** | Apple Silicon (aarch64), Intel (x86_64) | Supported | Native `jlink` minimal runtime distribution. |
+| **Windows** | x86_64 | Supported | Self-contained `.exe` image via `jpackage`. |
+| **OpenJDK / HotSpot** | Temurin, Corretto, Zulu, Oracle, Liberica | Full Support | Standard `jdk.attach` implementation with dynamic local management agent. |
+| **IBM Semeru / OpenJ9** | OpenJ9 / IBM J9 | Experimental | OpenJ9 uses `com.ibm.tools.attach`. Use Actuator HTTP mode if Attach API fails. |
+| **Docker Containers** | Isolated namespaces | Conditional | Cross-namespace attach requires `--pid=host` or running `jvm-mcp` inside the container. Alternatively use Actuator mode. |
+
+---
+
 ## Known Limitations and Trade-offs
 
-- **Container Boundaries:** Direct host attachment across isolated Docker container namespaces fails due to separate PID and IPC namespaces. Attach from within the container namespace, or use Actuator HTTP mode (`jvm-mcp actuator --url ...`).
+- **Container Boundaries:** Direct host attachment across isolated Docker container namespaces fails due to separate PID and IPC namespaces. Attach from within the container namespace, use `--pid=host`, or use Actuator HTTP mode (`jvm-mcp actuator --url ...`).
 - **Jlink / Jpackage Bundling:** GraalVM Native Image was evaluated and rejected because `jdk.attach` dynamically loads HotSpot C++ native libraries (`libattach.so` / `attach.dll`), violating Closed-World AOT assumptions. We distribute minimal bundles containing a stripped modular JRE via `jlink` (Linux/macOS) and `jpackage` app images (Windows), maintaining cross-platform parity with startup times under 150ms.
 
 ---

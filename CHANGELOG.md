@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **MCP Server Modular Architecture**:
+  - Deconstructed `ServeCommand.java` (from a 503-line god class down to 70 lines) into clean, single-responsibility modules:
+    - `dev.jvmmcp.server.transport.McpTransport`: Manages non-blocking stdio loop, virtual threads per task executor, and synchronized response framing.
+    - `dev.jvmmcp.server.protocol.McpDispatcher`: Implements JSON-RPC 2.0 protocol negotiation (`initialize`, `ping`, `tools/list`, `tools/call`) and structured error taxonomy.
+    - `dev.jvmmcp.server.tool.ToolRegistry` & `ToolHandler`: Extensible plug-and-play tool registry and domain handler interfaces.
+    - Domain tool handlers: `JvmDiagnosticToolHandler`, `SpringBeansToolHandler`, `PostgresToolHandler`, and `ActuatorToolHandler`.
+    - `dev.jvmmcp.server.tool.ToolArgs`: Boundary-checked, type-safe argument parsing utilities.
+- **Multi-Platform Readiness Diagnostics**:
+  - Enhanced `jvm-mcp doctor` with JVM runtime vendor detection (HotSpot vs OpenJ9 / IBM Semeru), Docker container isolation checks (`/.dockerenv`, `/run/.containerenv`), and Linux `yama/ptrace_scope` verification.
+  - Added dedicated unit tests for all diagnostic check methods in `DoctorCommandTest`.
+- **Release Matrix Expansion & Automated Homebrew Tap Synchronization**:
+  - Expanded GitHub Actions release build matrix to include macOS Intel (`macos-13`) and Linux ARM64 (`ubuntu-24.04-arm`), producing all 4 UNIX archives + Windows executable.
+  - Added automated SHA-256 checksum injection in `release.yml` that synchronizes `homebrew/jvm-mcp.rb` from `checksums.txt` and publishes the updated formula as an atomic release asset.
+- **Platform Compatibility Matrix**:
+  - Documented explicit operating system, JDK vendor, container, and security permission compatibility in `README.md`.
+
+### Changed
+- **Harmonized Quality Gates & Test Suite**:
+  - Raised `mcp-server` PIT mutation testing threshold from 25% to **70%** (achieving 73% kill rate across 347 mutations).
+  - Raised `mcp-server` JaCoCo branch coverage threshold from 55% to **65%** (achieving 82% branch coverage and 93% instruction coverage).
+  - Expanded `mcp-server` test suite from 80 to **165 tests** with 0 failures and 0 errors.
+  - Managed `maven-jar-plugin` version (3.4.2) in root POM plugin management, eliminating Maven model warnings.
+- **Accurate Project Positioning**:
+  - Updated documentation to emphasize "Zero runtime framework overhead with self-contained packaging and zero target-application modifications" over generic "zero-dependency" claims.
+
 ## [1.1.0] - 2026-10-11
 
 ### Added

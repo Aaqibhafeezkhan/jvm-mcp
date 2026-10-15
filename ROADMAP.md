@@ -57,18 +57,24 @@ This roadmap outlines completed development milestones, architectural priorities
   - Configured `jpackage` bundling for zero-dependency Windows `.exe` installers.
   - Implemented two-stage collector release pipeline in GitHub Actions (`build-matrix` + `publish-release`) with SHA-256 checksum generation (`checksums.txt`).
 
-- [x] **Phase 8: Ecosystem & Package Managers**
+- [x] **Phase 8: Ecosystem, Multi-Platform & Packaging Automation**
   - Universal `install.sh` (`curl | bash`) with OS/architecture detection and pre-extraction SHA-256 cryptographic verification.
-  - Environment readiness diagnostics command (`jvm-mcp doctor`).
-  - Homebrew Formula specification (`homebrew/jvm-mcp.rb`) with multi-architecture UNIX blocks and `libexec` installation.
+  - Environment readiness diagnostics command (`jvm-mcp doctor`) with ptrace scope and container boundary checks.
+  - Homebrew Formula specification (`homebrew/jvm-mcp.rb`) with multi-architecture UNIX blocks (Apple Silicon, Intel Mac, Linux x86_64, Linux ARM64) and automated SHA-256 injection during GitHub Releases.
   - Dynamic runtime version resolution hierarchy with Picocli `IVersionProvider`.
+  - Harmonized quality gates across modules (PIT Mutation >= 70%, Branch Coverage >= 65%).
 
 ---
 
-## Upcoming Community Milestones (Open for Contributions)
+## Upcoming Milestones & Community Roadmap
 
-- [ ] **Target Virtual Threads (Project Loom) Inspection & Diagnostics (Issue #10)**
-  - Enumerate and inspect virtual threads inside the target JVM process via `Thread.dump_to_file -format=json` (`jcmd`).
+- [ ] **Phase 9: SSE Transport & Remote Agent Dashboard**
+  - Streamable HTTP / Server-Sent Events (SSE) remote transport (`--transport sse`).
+  - Spring AI / Web dashboard integration (`--spring`) as an optional decoupled module.
+  - Migration to official Java MCP SDK (`io.modelcontextprotocol.sdk`) once modularized without heavy transitive dependencies.
+
+- [ ] **Phase 10: Target Virtual Threads (Project Loom) Diagnostics (Issue #10)**
+  - Enumerate and inspect virtual threads inside target JVM processes via `Thread.dump_to_file -format=json` (`jcmd`).
   - Track mounted vs unmounted virtual thread counts and carrier thread mapping.
   - Expose `--virtual` (`-v`) flag in `jvm-mcp threads` and include in `get_thread_diagnostics` MCP tool.
 
