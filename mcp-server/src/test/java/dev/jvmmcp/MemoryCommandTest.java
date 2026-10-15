@@ -151,12 +151,16 @@ class MemoryCommandTest {
 
             assertThat(exitCode).isZero();
             String output = out.toString();
-            assertThat(output).contains("JVM MEMORY DIAGNOSTICS FOR PID " + targetPid);
+            assertThat(output).contains("=".repeat(80));
+            assertThat(output).contains(" JVM MEMORY DIAGNOSTICS FOR PID " + targetPid);
             assertThat(output).contains("Heap Usage");
             assertThat(output).contains("Non-Heap Usage");
             assertThat(output).contains("Pressure Status");
             assertThat(output).contains("Recommendation");
+            assertThat(output).contains("-".repeat(80));
             assertThat(output).contains("MEMORY POOLS");
+            assertThat(output).contains("POOL NAME");
+            assertThat(output).contains("USED (MB)");
         } finally {
             System.setOut(originalOut);
         }
@@ -190,8 +194,36 @@ class MemoryCommandTest {
 
             assertThat(exitCode).isZero();
             String output = out.toString();
+            assertThat(output).contains("-".repeat(80));
             assertThat(output).contains("HEAP HISTOGRAM (TOP 5 CLASSES)");
+            assertThat(output).contains("RANK   INSTANCES      BYTES (MB)     CLASS NAME");
             assertThat(output).contains("java.lang.String");
+            assertThat(output).contains("java.util.HashMap$Node");
+        } finally {
+            System.setOut(originalOut);
+        }
+    }
+
+    @Test
+    @DisplayName("memory command with --histogram and VM absent should query histogram over JMX")
+    void shouldPrintHeapHistogramWhenVmAbsent() {
+        long targetPid = ProcessHandle.current().pid();
+        when(mockAttachService.attach(String.valueOf(targetPid))).thenReturn(AttachResult.success(String.valueOf(targetPid), null));
+
+        MemoryCommand command = new MemoryCommand(mockAttachService);
+        command.pid = targetPid;
+        command.histogram = true;
+        command.topN = 5;
+
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        PrintStream originalOut = System.out;
+        try {
+            System.setOut(new PrintStream(out));
+            Integer exitCode = command.call();
+
+            assertThat(exitCode).isZero();
+            String output = out.toString();
+            assertThat(output).contains("HEAP HISTOGRAM (TOP 5 CLASSES)");
         } finally {
             System.setOut(originalOut);
         }

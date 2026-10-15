@@ -1,0 +1,84 @@
+package dev.jvmmcp.server.transport;
+
+import dev.jvmmcp.core.util.SimpleJson;
+import dev.jvmmcp.server.protocol.McpDispatcher;
+
+import java.io.BufferedReader;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.io.OutputStream;
+import java.io.PrintStream;
+import java.nio.charset.StandardCharsets;
+import java.util.Map;
+import java.util.Optional;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+
+/**
+ * Manages stdio transport, line reading loop, virtual-thread concurrency,
+ * synchronized response writing, and graceful termination.
+ */
+public class McpTransport {
+
+    private final McpDispatcher dispatcher;
+    private final ExecutorService customExecutor;
+    private final Object responseLock = new Object();
+
+    public McpTransport(McpDispatcher dispatcher) {
+        this(dispatcher, null);
+    }
+
+    public McpTransport(McpDispatcher dispatcher, ExecutorService customExecutor) {
+        this.dispatcher = dispatcher;
+        this.customExecutor = customExecutor;
+    }
+
+    public int start(InputStream in) {
+        return start(in, System.out);
+    }
+
+    public int start(InputStream in, OutputStream out) {
+        PrintStream printStream = out instanceof PrintStream ps ? ps : new PrintStream(out, true, StandardCharsets.UTF_8);
+        return start(in, printStream);
+    }
+
+    public int start(InputStream in, PrintStream out) {
+        ExecutorService executor = customExecutor != null ? customExecutor : Executors.newVirtualThreadPerTaskExecutor();
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(in, StandardCharsets.UTF_8))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                if (line.trim().isEmpty()) {
+                    continue;
+                }
+                final String requestLine = line;
+                executor.submit(() -> {
+                    try {
+                        Optional<Map<String, Object>> response = dispatcher.dispatch(requestLine);
+                        response.ifPresent(resp -> sendResponse(out, resp));
+                    } catch (Throwable e) {
+                        System.err.println("[jvm-mcp] Error processing request: " + e.getMessage());
+                        sendResponse(out, dispatcher.formatParseError(e.getMessage()));
+                    }
+                });
+            }
+            executor.shutdown();
+            executor.awaitTermination(5, TimeUnit.SECONDS);
+        } catch (Exception e) {
+            System.err.println("[jvm-mcp] Fatal server error: " + e.getMessage());
+            return 1;
+        }
+
+        return 0;
+    }
+
+    public void sendResponse(PrintStream out, Map<String, Object> response) {
+        if (response == null) {
+            return;
+        }
+        synchronized (responseLock) {
+            out.println(SimpleJson.toJson(response));
+            out.flush();
+        }
+    }
+}

@@ -57,9 +57,11 @@ class ListCommandTest {
     @Test
     @DisplayName("Direct invocation of ListCommand should format running JVMs with truncation")
     void shouldFormatJvmListWithTruncation() {
+        String exact28 = "1234567890123456789012345678";
         List<JvmProcess> jvms = List.of(
             new JvmProcess(101L, "LongApp", "org.example.service.very.long.package.name.MainApplicationClass", "21", Framework.SPRING_BOOT, true),
-            new JvmProcess(102L, "ShortApp", "App", "21", Framework.QUARKUS, true)
+            new JvmProcess(102L, "ShortApp", "App", "21", Framework.QUARKUS, true),
+            new JvmProcess(103L, "ExactApp", exact28, "21", Framework.PLAIN_JAVA, true)
         );
         when(mockAttachService.listJvms()).thenReturn(jvms);
 
@@ -74,8 +76,10 @@ class ListCommandTest {
             assertThat(exitCode).isZero();
             String output = out.toString();
             assertThat(output).contains("PID        FRAMEWORK        MAIN CLASS                     DISPLAY NAME");
+            assertThat(output).contains("-".repeat(80));
             assertThat(output).contains("101        Spring Boot      org.example.service.very....   LongApp");
             assertThat(output).contains("102        Quarkus          App                            ShortApp");
+            assertThat(output).contains("103        Plain Java       " + exact28 + "   ExactApp");
         } finally {
             System.setOut(originalOut);
         }
@@ -99,5 +103,12 @@ class ListCommandTest {
         } finally {
             System.setOut(originalOut);
         }
+    }
+
+    @Test
+    @DisplayName("Default constructor should initialize properly")
+    void shouldInitializeWithDefaultConstructor() {
+        ListCommand command = new ListCommand();
+        assertThat(command).isNotNull();
     }
 }

@@ -443,6 +443,33 @@ class ServeCommandTest {
         }
     }
 
+    @Test
+    @DisplayName("shutdown hook detaches attached VirtualMachine")
+    void shouldDetachOnShutdownHook() {
+        com.sun.tools.attach.VirtualMachine mockVm = org.mockito.Mockito.mock(com.sun.tools.attach.VirtualMachine.class);
+        Runnable hook = ServeCommand.createShutdownHook(mockVm, 123, mockAttachService);
+        hook.run();
+        org.mockito.Mockito.verify(mockAttachService).detach(mockVm);
+    }
+
+    @Test
+    @DisplayName("shutdown hook handles exception when detach fails")
+    void shouldHandleExceptionDuringShutdownDetach() {
+        com.sun.tools.attach.VirtualMachine mockVm = org.mockito.Mockito.mock(com.sun.tools.attach.VirtualMachine.class);
+        org.mockito.Mockito.doThrow(new RuntimeException("Detach failed")).when(mockAttachService).detach(mockVm);
+        Runnable hook = ServeCommand.createShutdownHook(mockVm, 123, mockAttachService);
+        hook.run(); // Should not throw
+        org.mockito.Mockito.verify(mockAttachService).detach(mockVm);
+    }
+
+    @Test
+    @DisplayName("shutdown hook does nothing when vm is null")
+    void shouldIgnoreNullVmOnShutdown() {
+        Runnable hook = ServeCommand.createShutdownHook(null, 123, mockAttachService);
+        hook.run();
+        org.mockito.Mockito.verifyNoInteractions(mockAttachService);
+    }
+
     @SuppressWarnings("unchecked")
     private static Map<String, Object> asMap(Object obj) {
         return obj instanceof Map<?, ?> map ? (Map<String, Object>) map : null;

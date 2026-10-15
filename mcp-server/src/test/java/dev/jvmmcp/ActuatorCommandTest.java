@@ -39,8 +39,32 @@ class ActuatorCommandTest {
                 os.write(resp);
             }
         });
+        server.createContext("/actuator/metrics/jvm.memory.used", exchange -> {
+            byte[] resp = "{\"name\":\"jvm.memory.used\",\"measurements\":[{\"value\":100}]}".getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().set("Content-Type", "application/vnd.spring-boot.actuator.v3+json");
+            exchange.sendResponseHeaders(200, resp.length);
+            try (OutputStream os = exchange.getResponseBody()) {
+                os.write(resp);
+            }
+        });
+        server.createContext("/actuator/metrics/jvm.threads.live", exchange -> {
+            byte[] resp = "{\"name\":\"jvm.threads.live\",\"measurements\":[{\"value\":10}]}".getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().set("Content-Type", "application/vnd.spring-boot.actuator.v3+json");
+            exchange.sendResponseHeaders(200, resp.length);
+            try (OutputStream os = exchange.getResponseBody()) {
+                os.write(resp);
+            }
+        });
         server.createContext("/actuator/startup", exchange -> {
             byte[] resp = "{\"springBootVersion\":\"3.3.0\"}".getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().set("Content-Type", "application/vnd.spring-boot.actuator.v3+json");
+            exchange.sendResponseHeaders(200, resp.length);
+            try (OutputStream os = exchange.getResponseBody()) {
+                os.write(resp);
+            }
+        });
+        server.createContext("/actuator/info", exchange -> {
+            byte[] resp = "{\"app\":{\"version\":\"1.0\"}}".getBytes(StandardCharsets.UTF_8);
             exchange.getResponseHeaders().set("Content-Type", "application/vnd.spring-boot.actuator.v3+json");
             exchange.sendResponseHeaders(200, resp.length);
             try (OutputStream os = exchange.getResponseBody()) {
@@ -107,6 +131,91 @@ class ActuatorCommandTest {
             assertThat(out.toString()).contains("jvm.memory.used");
         } finally {
             System.setOut(originalOut);
+        }
+    }
+
+    @Test
+    @DisplayName("actuator command should query single metric successfully")
+    void shouldQuerySingleMetric() {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        PrintStream originalOut = System.out;
+        try {
+            System.setOut(new PrintStream(out));
+            CommandLine cmd = new CommandLine(new JvmMcp());
+            int exitCode = cmd.execute("actuator", "--url", serverBaseUrl, "metrics/jvm.memory.used");
+
+            assertThat(exitCode).isZero();
+            assertThat(out.toString()).contains("\"name\":\"jvm.memory.used\"");
+        } finally {
+            System.setOut(originalOut);
+        }
+    }
+
+    @Test
+    @DisplayName("actuator command should query batch metrics successfully")
+    void shouldQueryBatchMetrics() {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        PrintStream originalOut = System.out;
+        try {
+            System.setOut(new PrintStream(out));
+            CommandLine cmd = new CommandLine(new JvmMcp());
+            int exitCode = cmd.execute("actuator", "--url", serverBaseUrl, "metrics/jvm.memory.used,jvm.threads.live");
+
+            assertThat(exitCode).isZero();
+            assertThat(out.toString()).contains("jvm.memory.used");
+        } finally {
+            System.setOut(originalOut);
+        }
+    }
+
+    @Test
+    @DisplayName("actuator command should query custom endpoint successfully")
+    void shouldQueryCustomEndpoint() {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        PrintStream originalOut = System.out;
+        try {
+            System.setOut(new PrintStream(out));
+            CommandLine cmd = new CommandLine(new JvmMcp());
+            int exitCode = cmd.execute("actuator", "--url", serverBaseUrl, "actuator/info");
+
+            assertThat(exitCode).isZero();
+            assertThat(out.toString()).contains("\"version\":\"1.0\"");
+        } finally {
+            System.setOut(originalOut);
+        }
+    }
+
+    @Test
+    @DisplayName("actuator command warns on credentials over unencrypted HTTP")
+    void shouldWarnOnCredentialsOverHttp() {
+        ByteArrayOutputStream err = new ByteArrayOutputStream();
+        PrintStream originalErr = System.err;
+        try {
+            System.setErr(new PrintStream(err));
+            CommandLine cmd = new CommandLine(new JvmMcp());
+            String ipUrl = "http://127.0.0.1:" + server.getAddress().getPort();
+            cmd.execute("actuator", "--url", ipUrl, "--token", "secret", "health");
+
+            assertThat(err.toString()).contains("WARNING: Sending Actuator credentials over unencrypted HTTP.");
+        } finally {
+            System.setErr(originalErr);
+        }
+    }
+
+    @Test
+    @DisplayName("actuator command fails on invalid auth combination")
+    void shouldFailOnInvalidAuth() {
+        ByteArrayOutputStream err = new ByteArrayOutputStream();
+        PrintStream originalErr = System.err;
+        try {
+            System.setErr(new PrintStream(err));
+            CommandLine cmd = new CommandLine(new JvmMcp());
+            int exitCode = cmd.execute("actuator", "--url", serverBaseUrl, "--user", "admin", "health");
+
+            assertThat(exitCode).isEqualTo(1);
+            assertThat(err.toString()).contains("--actuator-user and --actuator-password must be provided together");
+        } finally {
+            System.setErr(originalErr);
         }
     }
 

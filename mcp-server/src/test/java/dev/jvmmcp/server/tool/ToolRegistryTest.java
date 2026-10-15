@@ -1,0 +1,147 @@
+package dev.jvmmcp.server.tool;
+
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+class ToolRegistryTest {
+
+    @Test
+    @DisplayName("register and getHandler returns correct handler for registered tool")
+    void testRegisterAndLookup() {
+        ToolRegistry registry = new ToolRegistry();
+        ToolHandler handler = new StubToolHandler(
+            List.of("stub_tool1", "stub_tool2"),
+            List.of(Map.of("name", "stub_tool1"), Map.of("name", "stub_tool2")),
+            (name, args) -> Map.of("content", List.of(Map.of("type", "text", "text", "ok")))
+        );
+
+        registry.register(handler);
+
+        assertThat(registry.getHandler("stub_tool1")).contains(handler);
+        assertThat(registry.getHandler("stub_tool2")).contains(handler);
+        assertThat(registry.getHandler("non_existent")).isEmpty();
+        assertThat(registry.getHandler(null)).isEmpty();
+    }
+
+    @Test
+    @DisplayName("register handles null safely")
+    void testRegisterNull() {
+        ToolRegistry registry = new ToolRegistry();
+        registry.register(null);
+        assertThat(registry.getToolsList()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("getToolsList aggregates all tool definitions across handlers in order")
+    void testGetToolsList() {
+        ToolRegistry registry = new ToolRegistry();
+        ToolHandler handler1 = new StubToolHandler(
+            List.of("toolA"),
+            List.of(Map.of("name", "toolA")),
+            (name, args) -> Map.of()
+        );
+        ToolHandler handler2 = new StubToolHandler(
+            List.of("toolB", "toolC"),
+            List.of(Map.of("name", "toolB"), Map.of("name", "toolC")),
+            (name, args) -> Map.of()
+        );
+
+        registry.register(handler1);
+        registry.register(handler2);
+
+        List<Map<String, Object>> tools = registry.getToolsList();
+        assertThat(tools).hasSize(3);
+        assertThat(tools.get(0).get("name")).isEqualTo("toolA");
+        assertThat(tools.get(1).get("name")).isEqualTo("toolB");
+        assertThat(tools.get(2).get("name")).isEqualTo("toolC");
+    }
+
+    @Test
+    @DisplayName("execute delegates to handler on success")
+    void testExecuteSuccess() {
+        ToolRegistry registry = new ToolRegistry();
+        ToolHandler handler = new StubToolHandler(
+            List.of("greet"),
+            List.of(Map.of("name", "greet")),
+            (name, args) -> Map.of("content", List.of(Map.of("type", "text", "text", "Hello " + args.get("name"))))
+        );
+        registry.register(handler);
+
+        Map<String, Object> result = registry.execute("greet", Map.of("name", "Dario"));
+        assertThat(result.get("isError")).isNull();
+        List<?> content = (List<?>) result.get("content");
+        assertThat(content).hasSize(1);
+        Map<?, ?> item = (Map<?, ?>) content.get(0);
+        assertThat(item.get("text")).isEqualTo("Hello Dario");
+    }
+
+    @Test
+    @DisplayName("execute returns error for unknown or null tool name")
+    void testExecuteUnknownTool() {
+        ToolRegistry registry = new ToolRegistry();
+
+        Map<String, Object> result = registry.execute("unknown", Map.of());
+        assertThat(result.get("isError")).isEqualTo(true);
+        List<?> content = (List<?>) result.get("content");
+        Map<?, ?> item = (Map<?, ?>) content.get(0);
+        assertThat(item.get("text").toString()).contains("Unknown tool: unknown");
+
+        Map<String, Object> nullResult = registry.execute(null, Map.of());
+        assertThat(nullResult.get("isError")).isEqualTo(true);
+        List<?> nullContent = (List<?>) nullResult.get("content");
+        Map<?, ?> nullItem = (Map<?, ?>) nullContent.get(0);
+        assertThat(nullItem.get("text").toString()).contains("Unknown tool: null");
+    }
+
+    @Test
+    @DisplayName("execute catches exceptions from handler and formats error result")
+    void testExecuteHandlerThrows() {
+        ToolRegistry registry = new ToolRegistry();
+        ToolHandler handler = new StubToolHandler(
+            List.of("failing"),
+            List.of(Map.of("name", "failing")),
+            (name, args) -> { throw new IllegalStateException("Simulated explosion"); }
+        );
+        registry.register(handler);
+
+        Map<String, Object> result = registry.execute("failing", Map.of());
+        assertThat(result.get("isError")).isEqualTo(true);
+        List<?> content = (List<?>) result.get("content");
+        Map<?, ?> item = (Map<?, ?>) content.get(0);
+        assertThat(item.get("text").toString()).contains("Error executing tool: Simulated explosion");
+    }
+
+    private static class StubToolHandler implements ToolHandler {
+        private final List<String> names;
+        private final List<Map<String, Object>> defs;
+        private final ToolExecutor executor;
+
+        StubToolHandler(List<String> names, List<Map<String, Object>> defs, ToolExecutor executor) {
+            this.names = names;
+            this.defs = defs;
+            this.executor = executor;
+        }
+
+        @Override
+        public List<String> toolNames() { return names; }
+
+        @Override
+        public List<Map<String, Object>> toolDefinitions() { return defs; }
+
+        @Override
+        public Map<String, Object> execute(String toolName, Map<String, Object> arguments) throws Exception {
+            return executor.run(toolName, arguments);
+        }
+    }
+
+    @FunctionalInterface
+    private interface ToolExecutor {
+        Map<String, Object> run(String name, Map<String, Object> args) throws Exception;
+    }
+}

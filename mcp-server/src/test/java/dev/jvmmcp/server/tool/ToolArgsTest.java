@@ -1,0 +1,100 @@
+package dev.jvmmcp.server.tool;
+
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+
+import java.util.HashMap;
+import java.util.Map;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+class ToolArgsTest {
+
+    @Test
+    @DisplayName("asMap casts Map objects and returns null for non-maps")
+    void testAsMap() {
+        Map<String, Object> map = Map.of("key", "value");
+        assertThat(ToolArgs.asMap(map)).isSameAs(map);
+        assertThat(ToolArgs.asMap(null)).isNull();
+        assertThat(ToolArgs.asMap("not a map")).isNull();
+        assertThat(ToolArgs.asMap(123)).isNull();
+    }
+
+    @Test
+    @DisplayName("getStringArg returns string value when present")
+    void testGetStringArgSuccess() {
+        Map<String, Object> args = Map.of("name", "testVal");
+        assertThat(ToolArgs.getStringArg(args, "name", true)).isEqualTo("testVal");
+        assertThat(ToolArgs.getStringArg(args, "name", false)).isEqualTo("testVal");
+    }
+
+    @Test
+    @DisplayName("getStringArg handles missing keys based on required flag")
+    void testGetStringArgMissing() {
+        Map<String, Object> args = Map.of("other", "val");
+        assertThat(ToolArgs.getStringArg(args, "missing", false)).isNull();
+        assertThatThrownBy(() -> ToolArgs.getStringArg(args, "missing", true))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("Missing required argument: missing");
+
+        assertThat(ToolArgs.getStringArg(null, "missing", false)).isNull();
+        assertThatThrownBy(() -> ToolArgs.getStringArg(null, "missing", true))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("Missing required argument: missing");
+    }
+
+    @Test
+    @DisplayName("getStringArg throws exception for non-string values")
+    void testGetStringArgInvalidType() {
+        Map<String, Object> args = Map.of("count", 42);
+        assertThatThrownBy(() -> ToolArgs.getStringArg(args, "count", false))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("Argument 'count' must be a string");
+    }
+
+    @Test
+    @DisplayName("getStringArg handles null value for present key")
+    void testGetStringArgNullValue() {
+        Map<String, Object> args = new HashMap<>();
+        args.put("nullable", null);
+        assertThat(ToolArgs.getStringArg(args, "nullable", false)).isNull();
+    }
+
+    @Test
+    @DisplayName("getLongArg returns long value for numbers")
+    void testGetLongArgSuccess() {
+        Map<String, Object> args = Map.of(
+            "intVal", 10,
+            "longVal", 5000000000L,
+            "doubleVal", 99.0
+        );
+        assertThat(ToolArgs.getLongArg(args, "intVal", true)).isEqualTo(10L);
+        assertThat(ToolArgs.getLongArg(args, "longVal", false)).isEqualTo(5000000000L);
+        assertThat(ToolArgs.getLongArg(args, "doubleVal", false)).isEqualTo(99L);
+    }
+
+    @Test
+    @DisplayName("getLongArg handles missing keys based on required flag")
+    void testGetLongArgMissing() {
+        Map<String, Object> args = Map.of("other", 100);
+        assertThat(ToolArgs.getLongArg(args, "missing", false)).isEqualTo(0L);
+        assertThatThrownBy(() -> ToolArgs.getLongArg(args, "missing", true))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("Missing required argument: missing");
+
+        assertThat(ToolArgs.getLongArg(null, "missing", false)).isEqualTo(0L);
+        assertThatThrownBy(() -> ToolArgs.getLongArg(null, "missing", true))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("Missing required argument: missing");
+    }
+
+    @Test
+    @DisplayName("getLongArg throws exception for non-number values")
+    void testGetLongArgInvalidType() {
+        Map<String, Object> args = Map.of("str", "1234");
+        assertThatThrownBy(() -> ToolArgs.getLongArg(args, "str", false))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("Argument 'str' must be a number");
+    }
+}

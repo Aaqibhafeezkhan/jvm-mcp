@@ -85,10 +85,12 @@ class ThreadsCommandTest {
 
             assertThat(exitCode).isZero();
             String output = out.toString();
+            assertThat(output).contains("=".repeat(80));
             assertThat(output).contains("JVM THREAD DIAGNOSTICS FOR PID " + targetPid);
             assertThat(output).contains("Total Threads");
             assertThat(output).contains("RUNNABLE");
             assertThat(output).contains("DEADLOCK STATUS");
+            assertThat(output).contains("No deadlocked threads detected.");
         } finally {
             System.setOut(originalOut);
         }
@@ -119,9 +121,14 @@ class ThreadsCommandTest {
 
             assertThat(exitCode).isZero();
             String output = out.toString();
+            assertThat(output).contains("-".repeat(80));
             assertThat(output).contains("DEADLOCK STATUS: DETECTED");
+            assertThat(output).contains("Deadlock Count : 1 threads involved");
+            assertThat(output).contains("Recommendation : Fix it");
+            assertThat(output).contains("THREAD ID");
             assertThat(output).contains("Thread-1");
             assertThat(output).contains("Lock-A");
+            assertThat(output).contains("Class.method(Class.java:10)");
             assertThat(output).doesNotContain("JVM THREAD DIAGNOSTICS FOR PID");
         } finally {
             System.setOut(originalOut);
@@ -156,7 +163,10 @@ class ThreadsCommandTest {
 
             assertThat(exitCode).isZero();
             String output = out.toString();
+            assertThat(output).contains("=".repeat(80));
             assertThat(output).contains("THREAD DUMP FOR PID " + targetPid);
+            assertThat(output).contains("\"Worker\" #2 [WAITING]");
+            assertThat(output).contains("at Class.method(Class.java:10)");
             assertThat(output).contains("waiting on Lock-B held by Owner (ID 3)");
         } finally {
             System.setOut(originalOut);
@@ -198,7 +208,7 @@ class ThreadsCommandTest {
             new dev.jvmmcp.core.model.BlockedThreadDetail(4L, "BlockedThread", 0L, 0L, "Lock-C", 5L, "OtherOwner", java.util.List.of(
                 new dev.jvmmcp.core.model.ThreadStackFrame("Class", "method", "Class.java", 20, false)
             )),
-            new dev.jvmmcp.core.model.BlockedThreadDetail(5L, "BlockedThread2", 0L, 0L, "Lock-D", null, null, java.util.List.of())
+            new dev.jvmmcp.core.model.BlockedThreadDetail(5L, "BlockedThread2", null, 0L, "Lock-D", null, null, java.util.List.of())
         );
         when(mockClient.findBlockedThreads(0)).thenReturn(blocked);
 
@@ -215,9 +225,14 @@ class ThreadsCommandTest {
 
             assertThat(exitCode).isZero();
             String output = out.toString();
-            assertThat(output).contains("BLOCKED THREADS FOR PID " + targetPid);
-            assertThat(output).contains("BlockedThread");
-            assertThat(output).contains("Lock-C");
+            assertThat(output).contains("=".repeat(80));
+            assertThat(output).contains("BLOCKED THREADS FOR PID " + targetPid + " (2 found)");
+            assertThat(output).contains("Thread #4 [BlockedThread]");
+            assertThat(output).contains("Waiting on lock: Lock-C (Held by: OtherOwner [ID 5])");
+            assertThat(output).contains("Blocked: 0 ms (count: 0)");
+            assertThat(output).contains("Waiting on lock: Lock-D (Held by: None)");
+            assertThat(output).contains("Blocked: Contention timing not monitored (count: 0)");
+            assertThat(output).contains("at Class.method(Class.java:20)");
         } finally {
             System.setOut(originalOut);
         }
