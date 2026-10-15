@@ -28,8 +28,12 @@ jobs:
         include:
           - os: ubuntu-latest
             suffix: linux-amd64
+          - os: ubuntu-24.04-arm
+            suffix: linux-aarch64
           - os: macos-latest
             suffix: macos-aarch64
+          - os: macos-13
+            suffix: macos-amd64
           - os: windows-latest
             suffix: windows-amd64
     steps:
@@ -144,13 +148,16 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
+      - name: Checkout Source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4.2.2
+
       - name: Download all artifacts
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           path: artifacts
           merge-multiple: true
 
-      - name: Calculate Checksums
+      - name: Calculate Checksums & Synchronize Homebrew Formula
         run: |
           cd artifacts
           echo "Release artifacts present in workspace:"
@@ -168,6 +175,27 @@ jobs:
 
           echo "Canonical checksums.txt:"
           cat checksums.txt
+          cd ..
+
+          # Populate Homebrew Formula with release version and computed SHA-256 sums
+          TAG="${{ inputs.tag_name || github.ref_name }}"
+          VERSION="${TAG#v}"
+          echo "Synchronizing Homebrew formula for version ${VERSION}..."
+
+          MACOS_AARCH64_SHA=$(cat artifacts/jvm-mcp-macos-aarch64.tar.gz.sha256 2>/dev/null | awk '{print $1}' || echo "")
+          MACOS_AMD64_SHA=$(cat artifacts/jvm-mcp-macos-amd64.tar.gz.sha256 2>/dev/null | awk '{print $1}' || echo "")
+          LINUX_AMD64_SHA=$(cat artifacts/jvm-mcp-linux-amd64.tar.gz.sha256 2>/dev/null | awk '{print $1}' || echo "")
+          LINUX_AARCH64_SHA=$(cat artifacts/jvm-mcp-linux-aarch64.tar.gz.sha256 2>/dev/null | awk '{print $1}' || echo "")
+
+          sed -i "s/version \".*\"/version \"${VERSION}\"/" homebrew/jvm-mcp.rb
+          [ -n "$MACOS_AARCH64_SHA" ] && sed -i "s/REPLACE_WITH_MACOS_AARCH64_SHA256/${MACOS_AARCH64_SHA}/" homebrew/jvm-mcp.rb
+          [ -n "$MACOS_AMD64_SHA" ] && sed -i "s/REPLACE_WITH_MACOS_AMD64_SHA256/${MACOS_AMD64_SHA}/" homebrew/jvm-mcp.rb
+          [ -n "$LINUX_AMD64_SHA" ] && sed -i "s/REPLACE_WITH_LINUX_AMD64_SHA256/${LINUX_AMD64_SHA}/" homebrew/jvm-mcp.rb
+          [ -n "$LINUX_AARCH64_SHA" ] && sed -i "s/REPLACE_WITH_LINUX_AARCH64_SHA256/${LINUX_AARCH64_SHA}/" homebrew/jvm-mcp.rb
+
+          cp homebrew/jvm-mcp.rb artifacts/jvm-mcp.rb
+          echo "Generated artifacts/jvm-mcp.rb:"
+          cat artifacts/jvm-mcp.rb
 
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
