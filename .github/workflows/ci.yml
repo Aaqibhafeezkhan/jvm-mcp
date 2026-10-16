@@ -70,10 +70,12 @@ jobs:
           cache: 'maven'
 
       - name: Compile, Test & Verify Monorepo
-        run: mvn clean install -B --fail-fast
+        shell: bash
+        run: ./mvnw clean install -B --fail-fast
 
       - name: Run Pitest Mutation Coverage
         if: matrix.os == 'ubuntu-latest' && matrix.java == '21'
+        shell: bash
         run: ./mvnw org.pitest:pitest-maven:mutationCoverage -B
 
 

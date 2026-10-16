@@ -21,14 +21,16 @@ Only the latest release and active development branch receive security updates:
 
 2. **Sensitive Data Redaction in MCP Responses:**
    All diagnostic tool outputs, property dumps, and execution error messages returned through the MCP protocol are automatically sanitized by `SensitiveDataRedactor`:
+   - Nested maps, lists, and array structures are recursively traversed and sanitized via `redactDeep`.
    - Authorization headers (`Bearer <token>`, `Basic <credentials>`) are masked.
    - Sensitive key-value pairs (passwords, tokens, API keys, secrets) in JSON responses and configuration dumps are redacted.
    - Embedded JDBC userinfo credentials (`jdbc:...://user:password@host`) are stripped.
-   - JSON Web Tokens (`eyJ...`) are replaced with `[REDACTED_JWT]`.
+   - JSON Web Tokens (`eyJ...`) are replaced with `***`.
 
 3. **Spring Boot Actuator HTTP Protection & SSRF Mitigation:**
    When querying Actuator endpoints:
    - Target URLs are strictly restricted to `http` and `https` schemes. Arbitrary URI schemes (`file:`, `ftp:`, `gopher:`) are rejected.
+   - Userinfo, query parameters, and fragments are rejected in base URLs to prevent URI confusion.
    - HTTP redirect following is strictly disabled (`HttpClient.Redirect.NEVER`) to prevent redirect bypass attacks to internal networks or cloud metadata services (`169.254.169.254`).
    - Endpoint paths reject directory traversal attempts (`..` or `\`).
    - Response bodies are capped at 30 MB to prevent memory exhaustion from Billion Laughs or HTTP payload tarpits.
@@ -41,9 +43,11 @@ Only the latest release and active development branch receive security updates:
    - Disallowed driver connection parameters (e.g. `socketFactory`, `socketFactoryArg`, `sslrootcert`, `sslkey`, `sslpassword`, `options=`) are rejected to prevent arbitrary class loading or socket hijacking.
    - Target schema names are strictly validated against standard SQL identifier rules (`^[a-zA-Z_][a-zA-Z0-9_]*$`, max 63 characters) to eliminate SQL injection vectors.
    - SQL queries in slow query reports are sanitized to redact sensitive literals.
+   - All statement executions enforce a strict 10-second JDBC query timeout (`setQueryTimeout(10)`).
 
 5. **Resource Bounding & Execution Timeouts:**
-   - Diagnostic tools execute on virtual threads with an enforced 15-second timeout, preventing hung sockets or blocking calls from freezing the MCP transport.
+   - Transport level: `BoundedLineReader` streams incoming stdio requests in fixed 8KB chunks, strictly counting UTF-8 bytes up to a hard ceiling of 4MB. Oversized lines are discarded and drained without accumulating in memory, completely preventing OOM attacks before line completion.
+   - Diagnostic tools execute on virtual threads with an enforced 15-second timeout, preventing hung sockets or blocking calls from freezing the MCP transport. `ToolRegistry` implements `AutoCloseable` for clean executor termination.
    - Heap histogram inspection (`HeapHistogramReader`) enforces safe defaults (`topN = 50`), a maximum ceiling (`topN = 1000`), and caps parser processing at 100,000 lines.
    - CLI and tool arguments are bounded against integer overflow and negative values via `ToolArgs`.
 

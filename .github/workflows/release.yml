@@ -131,32 +131,43 @@ jobs:
             tar -czvf "jvm-mcp-${MATRIX_SUFFIX}.tar.gz" -C dist .
           fi
 
-      - name: Verify Executable (Linux/macOS)
+      - name: Verify Executable and Run Smoke Tests (Linux/macOS)
         if: runner.os != 'Windows'
         env:
           MATRIX_SUFFIX: ${{ matrix.suffix }}
         run: |
           mkdir -p verify_app
           tar -xzf "jvm-mcp-${MATRIX_SUFFIX}.tar.gz" -C verify_app
-          # Direct verification
+          # 1. Direct CLI verification
           ./verify_app/jvm-mcp --version
-          # Symlink resolution verification
+          ./verify_app/jvm-mcp doctor
+          # 2. Symlink resolution verification
           mkdir -p verify_app/test_bin
           ln -s ../jvm-mcp verify_app/test_bin/jvm-mcp
           ./verify_app/test_bin/jvm-mcp --version
-          echo "Linux/macOS executable verified successfully."
+          # 3. Protocol smoke test: initialize and tools/list over stdio
+          MCP_INPUT='{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"smoke-test","version":"1.0"}}}
+{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}'
+          MCP_OUTPUT=$(printf '%s\n' "$MCP_INPUT" | ./verify_app/jvm-mcp serve)
+          echo "$MCP_OUTPUT" | grep -q '"tools"' || { echo "Smoke test failed: tools/list response missing 'tools'" >&2; exit 1; }
+          echo "$MCP_OUTPUT" | grep -q '"protocolVersion":"2024-11-05"' || { echo "Smoke test failed: initialize response missing protocolVersion" >&2; exit 1; }
+          echo "Linux/macOS executable and stdio MCP protocol verified successfully."
 
-      - name: Verify Executable (Windows)
+      - name: Verify Executable and Run Smoke Tests (Windows)
         if: runner.os == 'Windows'
-        shell: powershell
+        shell: bash
         run: |
-          $binaryPath = "build-out\jvm-mcp\jvm-mcp.exe"
-          $process = Start-Process -FilePath $binaryPath -ArgumentList "--version" -Wait -PassThru -WindowStyle Hidden
-          if ($process.ExitCode -ne 0) {
-            Write-Error "Executable failed with exit code $($process.ExitCode)"
-            exit 1
-          }
-          Write-Host "Windows app-image verified successfully."
+          BINARY_PATH="build-out/jvm-mcp/jvm-mcp.exe"
+          # 1. Direct CLI verification
+          "$BINARY_PATH" --version
+          "$BINARY_PATH" doctor
+          # 2. Protocol smoke test: initialize and tools/list over stdio
+          MCP_INPUT='{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"smoke-test","version":"1.0"}}}
+{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}'
+          MCP_OUTPUT=$(printf '%s\n' "$MCP_INPUT" | "$BINARY_PATH" serve)
+          echo "$MCP_OUTPUT" | grep -q '"tools"' || { echo "Windows smoke test failed: tools/list response missing 'tools'" >&2; exit 1; }
+          echo "$MCP_OUTPUT" | grep -q '"protocolVersion":"2024-11-05"' || { echo "Windows smoke test failed: initialize response missing protocolVersion" >&2; exit 1; }
+          echo "Windows executable and stdio MCP protocol verified successfully."
 
       - name: Upload Artifact
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v4.4.0
