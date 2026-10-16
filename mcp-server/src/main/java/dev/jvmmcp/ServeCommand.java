@@ -58,12 +58,13 @@ public class ServeCommand implements Callable<Integer> {
         }
         System.err.println("[jvm-mcp] Starting server via transport: " + transport + "...");
         Runtime.getRuntime().addShutdownHook(new Thread(createShutdownHook(attachedVm, targetPid, attachService)));
-        ToolRegistry registry = new ToolRegistry();
-        registry.register(new JvmDiagnosticToolHandler(attachService));
-        registry.register(new PostgresToolHandler());
-        registry.register(new ActuatorToolHandler());
-        registry.register(new SpringBeansToolHandler(attachService));
-        InputStream in = inStream != null ? inStream : (testInStream != null ? testInStream : System.in);
-        return new McpTransport(new McpDispatcher(registry)).start(in, System.out);
+        try (ToolRegistry registry = new ToolRegistry()) {
+            registry.register(new JvmDiagnosticToolHandler(attachService));
+            registry.register(new PostgresToolHandler());
+            registry.register(new ActuatorToolHandler());
+            registry.register(new SpringBeansToolHandler(attachService));
+            InputStream in = inStream != null ? inStream : (testInStream != null ? testInStream : System.in);
+            return new McpTransport(new McpDispatcher(registry)).start(in, System.out);
+        }
     }
 }

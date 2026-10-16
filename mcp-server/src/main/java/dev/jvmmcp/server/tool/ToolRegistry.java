@@ -10,7 +10,7 @@ import java.util.concurrent.*;
  * Manages registration and lookup of ToolHandlers and delegates execution.
  * Enforces per-tool execution timeouts and automatic redaction of operational secrets.
  */
-public class ToolRegistry {
+public class ToolRegistry implements AutoCloseable {
 
     private static final Duration DEFAULT_TIMEOUT = Duration.ofSeconds(15);
 
@@ -95,16 +95,30 @@ public class ToolRegistry {
         }
     }
 
+    @Override
+    public void close() {
+        executorService.shutdown();
+        try {
+            if (!executorService.awaitTermination(2, TimeUnit.SECONDS)) {
+                executorService.shutdownNow();
+            }
+        } catch (InterruptedException e) {
+            executorService.shutdownNow();
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    @SuppressWarnings("unchecked")
     private Map<String, Object> sanitizeResult(Map<String, Object> result) {
         if (result == null) {
             return Map.of();
         }
         Object contentObj = result.get("content");
         if (!(contentObj instanceof List<?> list)) {
-            return result;
+            return (Map<String, Object>) SensitiveDataRedactor.redactDeep(result);
         }
 
-        List<Map<String, Object>> sanitizedList = new ArrayList<>();
+        List<Object> sanitizedList = new ArrayList<>();
         for (Object item : list) {
             if (item instanceof Map<?, ?> mapItem) {
                 Map<String, Object> copy = new LinkedHashMap<>();
@@ -114,15 +128,23 @@ public class ToolRegistry {
                     if ("text".equals(key) && val instanceof String textVal) {
                         copy.put(key, SensitiveDataRedactor.redact(textVal));
                     } else {
-                        copy.put(key, val);
+                        copy.put(key, SensitiveDataRedactor.redactDeep(val));
                     }
                 }
                 sanitizedList.add(copy);
+            } else {
+                sanitizedList.add(SensitiveDataRedactor.redactDeep(item));
             }
         }
 
-        Map<String, Object> newResult = new LinkedHashMap<>(result);
-        newResult.put("content", sanitizedList);
+        Map<String, Object> newResult = new LinkedHashMap<>();
+        for (Map.Entry<String, Object> entry : result.entrySet()) {
+            if ("content".equals(entry.getKey())) {
+                newResult.put("content", sanitizedList);
+            } else {
+                newResult.put(entry.getKey(), SensitiveDataRedactor.redactDeep(entry.getValue()));
+            }
+        }
         return newResult;
     }
 }

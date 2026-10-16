@@ -184,6 +184,60 @@ class ToolRegistryTest {
         assertThat(item.get("text").toString()).contains("Tool execution timed out");
     }
 
+    @Test
+    @DisplayName("close shuts down the virtual thread executor service")
+    void testCloseShutsDownExecutor() throws Exception {
+        ToolRegistry registry = new ToolRegistry();
+        java.lang.reflect.Field field = ToolRegistry.class.getDeclaredField("executorService");
+        field.setAccessible(true);
+        java.util.concurrent.ExecutorService es = (java.util.concurrent.ExecutorService) field.get(registry);
+        assertThat(es.isShutdown()).isFalse();
+
+        registry.close();
+        assertThat(es.isShutdown()).isTrue();
+    }
+
+    @Test
+    @DisplayName("execute performs deep redaction on complex nested maps and lists")
+    void testExecuteDeepRedaction() {
+        try (ToolRegistry registry = new ToolRegistry()) {
+            ToolHandler handler = new StubToolHandler(
+                List.of("nested_tool"),
+                List.of(Map.of("name", "nested_tool")),
+                (name, args) -> Map.of(
+                    "content", List.of(
+                        Map.of(
+                            "type", "nested",
+                            "metadata", Map.of(
+                                "secretKey", "superSecretPass",
+                                "connectionString", "jdbc:postgresql://user:pass123@localhost:5432/db",
+                                "headers", List.of("Bearer secretTokenXYZ", "normal-header")
+                            )
+                        )
+                    ),
+                    "extraInfo", Map.of("api_key", "sk-1234567890abcdef")
+                )
+            );
+            registry.register(handler);
+
+            Map<String, Object> result = registry.execute("nested_tool", Map.of());
+            assertThat(result.get("isError")).isNull();
+
+            List<?> content = (List<?>) result.get("content");
+            Map<?, ?> item = (Map<?, ?>) content.get(0);
+            Map<?, ?> metadata = (Map<?, ?>) item.get("metadata");
+            assertThat(metadata.get("secretKey")).isEqualTo("***");
+            assertThat(metadata.get("connectionString")).isEqualTo("jdbc:postgresql://user:***@localhost:5432/db");
+
+            List<?> headers = (List<?>) metadata.get("headers");
+            assertThat(headers.get(0)).isEqualTo("Bearer ***");
+            assertThat(headers.get(1)).isEqualTo("normal-header");
+
+            Map<?, ?> extraInfo = (Map<?, ?>) result.get("extraInfo");
+            assertThat(extraInfo.get("api_key")).isEqualTo("***");
+        }
+    }
+
     private static class StubToolHandler implements ToolHandler {
         private final List<String> names;
         private final List<Map<String, Object>> defs;

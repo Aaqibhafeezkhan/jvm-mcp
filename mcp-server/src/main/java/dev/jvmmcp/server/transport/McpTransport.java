@@ -3,9 +3,7 @@ package dev.jvmmcp.server.transport;
 import dev.jvmmcp.core.util.SimpleJson;
 import dev.jvmmcp.server.protocol.McpDispatcher;
 
-import java.io.BufferedReader;
 import java.io.InputStream;
-import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
@@ -47,15 +45,21 @@ public class McpTransport {
 
     public int start(InputStream in, PrintStream out) {
         ExecutorService executor = customExecutor != null ? customExecutor : Executors.newVirtualThreadPerTaskExecutor();
-        try (BufferedReader reader = new BufferedReader(new InputStreamReader(in, StandardCharsets.UTF_8))) {
-            String line;
-            while ((line = reader.readLine()) != null) {
-                if (line.trim().isEmpty()) {
+        try (BoundedLineReader reader = new BoundedLineReader(in, MAX_REQUEST_BYTES)) {
+            while (true) {
+                String line;
+                try {
+                    line = reader.readLine();
+                } catch (LineTooLargeException e) {
+                    System.err.println("[jvm-mcp] Request rejected: " + e.getMessage());
+                    sendResponse(out, dispatcher.formatParseError("Request exceeds maximum size limit of " + MAX_REQUEST_BYTES + " bytes"));
                     continue;
                 }
-                if (line.length() > MAX_REQUEST_BYTES) {
-                    System.err.println("[jvm-mcp] Request rejected: line length " + line.length() + " exceeds maximum limit of " + MAX_REQUEST_BYTES + " bytes");
-                    sendResponse(out, dispatcher.formatParseError("Request exceeds maximum size limit of " + MAX_REQUEST_BYTES + " bytes"));
+
+                if (line == null) {
+                    break;
+                }
+                if (line.trim().isEmpty()) {
                     continue;
                 }
                 final String requestLine = line;
