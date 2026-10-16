@@ -120,6 +120,17 @@ public class PostgresSchemaReader implements AutoCloseable {
         }
     }
 
+    public static String validateSchemaName(String schemaName) {
+        if (schemaName == null || schemaName.isBlank()) {
+            return "public";
+        }
+        String trimmed = schemaName.trim();
+        if (trimmed.length() > 63 || !trimmed.matches("^[a-zA-Z_][a-zA-Z0-9_]*$")) {
+            throw new IllegalArgumentException("Invalid schema name: must be a valid SQL identifier (alphanumeric and underscore, starting with letter/underscore, max 63 chars)");
+        }
+        return trimmed;
+    }
+
     private static String buildCacheKey(String jdbcUrl, String username, String password) {
         String secretHash = "none";
         if (password != null && !password.isEmpty()) {
@@ -180,11 +191,12 @@ public class PostgresSchemaReader implements AutoCloseable {
     }
 
     public SchemaInfo inspectSchema(String schemaName) throws SQLException {
+        String safeSchema = validateSchemaName(schemaName);
         try (Connection conn = getConnection()) {
-            List<TableInfo> tables = getTables(conn, schemaName);
-            List<IndexInfo> indexes = getIndexes(conn, schemaName);
-            List<ForeignKeyInfo> fks = getForeignKeys(conn, schemaName);
-            return new SchemaInfo(schemaName, tables, indexes, fks);
+            List<TableInfo> tables = getTables(conn, safeSchema);
+            List<IndexInfo> indexes = getIndexes(conn, safeSchema);
+            List<ForeignKeyInfo> fks = getForeignKeys(conn, safeSchema);
+            return new SchemaInfo(safeSchema, tables, indexes, fks);
         }
     }
 
@@ -302,6 +314,7 @@ public class PostgresSchemaReader implements AutoCloseable {
     }
 
     public MissingIndexAnalysis findMissingIndexes(String schemaName) throws SQLException {
+        String safeSchema = validateSchemaName(schemaName);
         // Filters out small tables (< 10MB) where PG intentionally uses Seq Scans for performance
         String sql = """
             SELECT
@@ -324,7 +337,7 @@ public class PostgresSchemaReader implements AutoCloseable {
         List<MissingIndexCandidate> candidates = new ArrayList<>();
         try (Connection conn = getConnection();
              PreparedStatement ps = conn.prepareStatement(sql)) {
-            ps.setString(1, schemaName);
+            ps.setString(1, safeSchema);
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
                     candidates.add(new MissingIndexCandidate(

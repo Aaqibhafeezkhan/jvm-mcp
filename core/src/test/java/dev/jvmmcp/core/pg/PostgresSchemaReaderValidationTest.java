@@ -68,4 +68,31 @@ class PostgresSchemaReaderValidationTest {
             .isInstanceOf(IllegalArgumentException.class)
             .hasMessageContaining("Dangerous JDBC connection parameter");
     }
+
+    @Test
+    @DisplayName("validateSchemaName accepts valid SQL identifiers and defaults blank/null to public")
+    void shouldValidateValidSchemaNames() {
+        org.assertj.core.api.Assertions.assertThat(PostgresSchemaReader.validateSchemaName(null)).isEqualTo("public");
+        org.assertj.core.api.Assertions.assertThat(PostgresSchemaReader.validateSchemaName("")).isEqualTo("public");
+        org.assertj.core.api.Assertions.assertThat(PostgresSchemaReader.validateSchemaName("   ")).isEqualTo("public");
+        org.assertj.core.api.Assertions.assertThat(PostgresSchemaReader.validateSchemaName("public")).isEqualTo("public");
+        org.assertj.core.api.Assertions.assertThat(PostgresSchemaReader.validateSchemaName("my_schema_2026")).isEqualTo("my_schema_2026");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+        "public; DROP TABLE users;--",
+        "schema' OR '1'='1",
+        "schema-with-dashes",
+        "123startsWithNumber",
+        "schema$name",
+        "schema name with spaces",
+        "a_very_long_schema_name_that_exceeds_sixty_three_characters_in_total_length_which_is_invalid"
+    })
+    @DisplayName("validateSchemaName rejects malicious, invalid, or overly long SQL identifiers")
+    void shouldRejectInvalidSchemaNames(String invalidSchema) {
+        assertThatThrownBy(() -> PostgresSchemaReader.validateSchemaName(invalidSchema))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("Invalid schema name");
+    }
 }

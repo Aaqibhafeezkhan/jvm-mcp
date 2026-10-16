@@ -63,15 +63,33 @@ public class JvmAttachService {
             return AttachResult.error(pid, "PID cannot be null or empty.");
         }
 
+        long requestedPid;
         try {
-            long requestedPid = Long.parseLong(pid);
-            if (requestedPid == ProcessHandle.current().pid()) {
-                // Self-attachment is blocked by default on modern JDKs (jdk.attach.allowAttachSelf=false),
-                // so self-inspection must not go through the Attach API.
-                return AttachResult.self(pid);
+            requestedPid = Long.parseLong(pid);
+        } catch (NumberFormatException e) {
+            return AttachResult.error(pid, "PID must be numeric.");
+        }
+
+        if (requestedPid <= 0) {
+            return AttachResult.error(pid, "PID must be a positive number.");
+        }
+
+        if (requestedPid == ProcessHandle.current().pid()) {
+            // Self-attachment is blocked by default on modern JDKs (jdk.attach.allowAttachSelf=false),
+            // so self-inspection must not go through the Attach API.
+            return AttachResult.self(pid);
+        }
+
+        java.util.Optional<ProcessHandle> processHandle = ProcessHandle.of(requestedPid);
+        if (processHandle.isPresent()) {
+            if (!processHandle.get().isAlive()) {
+                return AttachResult.processNotFound(pid);
             }
-        } catch (NumberFormatException ignored) {
-            // Fall through to the Attach API, which produces a structured error for invalid PIDs.
+            java.util.Optional<String> currentUser = ProcessHandle.current().info().user();
+            java.util.Optional<String> targetUser = processHandle.get().info().user();
+            if (currentUser.isPresent() && targetUser.isPresent() && !currentUser.get().equals(targetUser.get())) {
+                return AttachResult.permissionDenied(pid, "Target JVM process is owned by a different user (" + targetUser.get() + "). Cross-user attachment is prohibited.");
+            }
         }
 
         try {

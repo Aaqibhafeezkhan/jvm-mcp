@@ -106,6 +106,40 @@ class JvmAttachServiceTest {
             assertThat(blankResult.isSuccessful()).isFalse();
             assertThat(blankResult.status()).isEqualTo(AttachStatus.GENERIC_ERROR);
         }
+
+        @Test
+        @DisplayName("should reject negative or zero PIDs explicitly")
+        void shouldRejectNegativeOrZeroPids() {
+            AttachResult negativeResult = attachService.attach("-5");
+            assertThat(negativeResult.isSuccessful()).isFalse();
+            assertThat(negativeResult.status()).isEqualTo(AttachStatus.GENERIC_ERROR);
+            assertThat(negativeResult.message()).contains("PID must be a positive number");
+
+            AttachResult zeroResult = attachService.attach("0");
+            assertThat(zeroResult.isSuccessful()).isFalse();
+            assertThat(zeroResult.status()).isEqualTo(AttachStatus.GENERIC_ERROR);
+            assertThat(zeroResult.message()).contains("PID must be a positive number");
+        }
+
+        @Test
+        @DisplayName("should reject non-numeric PIDs explicitly")
+        void shouldRejectNonNumericPids() {
+            AttachResult nonNumeric = attachService.attach("abc-not-a-pid");
+            assertThat(nonNumeric.isSuccessful()).isFalse();
+            assertThat(nonNumeric.status()).isEqualTo(AttachStatus.GENERIC_ERROR);
+            assertThat(nonNumeric.message()).contains("PID must be numeric");
+        }
+
+        @Test
+        @DisplayName("should handle self PID attachment via local self-inspection")
+        void shouldHandleSelfAttachment() {
+            long currentPid = ProcessHandle.current().pid();
+            AttachResult selfResult = attachService.attach(String.valueOf(currentPid));
+            assertThat(selfResult.status()).isEqualTo(AttachStatus.SUCCESS);
+            assertThat(selfResult.isSuccessful()).isTrue();
+            assertThat(selfResult.virtualMachine()).isEmpty();
+            assertThat(selfResult.message()).contains("current process");
+        }
     }
 
     @Nested

@@ -49,6 +49,10 @@ public class ActuatorClient {
     private String normalizeBaseUrl(String url) {
         String trimmed = url.trim();
         URI uri = URI.create(trimmed);
+        String scheme = uri.getScheme();
+        if (scheme == null || (!scheme.equalsIgnoreCase("http") && !scheme.equalsIgnoreCase("https"))) {
+            throw new IllegalArgumentException("SSRF Protection: URL scheme must be http or https (got: " + scheme + ")");
+        }
         String host = uri.getHost();
         if (host == null) {
             throw new IllegalArgumentException("SSRF Protection: Malformed or missing host in URL");
@@ -86,7 +90,8 @@ public class ActuatorClient {
 
     private static HttpClient buildHttpClient(ActuatorAuth auth) {
         HttpClient.Builder builder = HttpClient.newBuilder()
-            .connectTimeout(Duration.ofMillis(3000));
+            .connectTimeout(Duration.ofMillis(3000))
+            .followRedirects(HttpClient.Redirect.NEVER);
         if (auth.insecure()) {
             System.err.println("[jvm-mcp] WARNING: Insecure TLS mode enabled for Actuator. Server certificate verification is disabled.");
             builder.sslContext(trustAllSslContext());
@@ -184,7 +189,13 @@ public class ActuatorClient {
      * @throws RuntimeException if the endpoint is unreachable or returns a non-200/503 status code.
      */
     public String fetchEndpoint(String endpoint) {
+        if (endpoint == null || endpoint.isBlank()) {
+            throw new IllegalArgumentException("Endpoint cannot be null or empty");
+        }
         String targetPath = endpoint.startsWith("/") ? endpoint : "/" + endpoint;
+        if (targetPath.contains("..") || targetPath.contains("\\")) {
+            throw new IllegalArgumentException("SSRF Protection: Path traversal sequences are prohibited in endpoint: " + endpoint);
+        }
         String targetUrl = baseUrl + targetPath;
         
         try {

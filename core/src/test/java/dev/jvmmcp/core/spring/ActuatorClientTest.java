@@ -191,5 +191,27 @@ class ActuatorClientTest {
         String res = client.getMetricsBatch(metrics);
         assertThat(res).contains("\"metric\\\"with\\\"quotes\"");
     }
+
+    @Test
+    void testSSRFProtectionRejectsNonHttpSchemes() {
+        assertThatThrownBy(() -> new ActuatorClient("file:///etc/passwd", ActuatorAuth.NONE))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("SSRF Protection: URL scheme must be http or https");
+
+        assertThatThrownBy(() -> new ActuatorClient("ftp://localhost:21", ActuatorAuth.NONE))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("SSRF Protection: URL scheme must be http or https");
+    }
+
+    @Test
+    void testPathTraversalRejectedInFetchEndpoint() {
+        assertThatThrownBy(() -> client.fetchEndpoint("/actuator/../etc/passwd"))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("SSRF Protection: Path traversal");
+
+        assertThatThrownBy(() -> client.fetchEndpoint("/actuator/..\\secret"))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("SSRF Protection: Path traversal");
+    }
 }
 

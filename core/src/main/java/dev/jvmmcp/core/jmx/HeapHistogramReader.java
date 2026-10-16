@@ -23,6 +23,9 @@ import javax.management.ObjectName;
 public class HeapHistogramReader {
 
     private static final String DIAGNOSTIC_COMMAND_MBEAN = "com.sun.management:type=DiagnosticCommand";
+    public static final int DEFAULT_TOP_N = 50;
+    public static final int MAX_TOP_N = 1000;
+    private static final int MAX_PARSED_LINES = 100_000;
 
     public HeapHistogram readHistogram(VirtualMachine vm, long pid, int topN) throws Exception {
         if (vm == null) {
@@ -65,6 +68,7 @@ public class HeapHistogramReader {
             return new HeapHistogram(pid, 0, 0, 0.0, List.of());
         }
 
+        int effectiveTopN = topN <= 0 ? DEFAULT_TOP_N : Math.min(topN, MAX_TOP_N);
         List<ClassHistogramItem> items = new ArrayList<>();
         long totalInstances = 0;
         long totalBytes = 0;
@@ -74,8 +78,12 @@ public class HeapHistogramReader {
         try (BufferedReader reader = new BufferedReader(new InputStreamReader(in, StandardCharsets.UTF_8))) {
             String line;
             boolean headerFound = false;
+            int parsedLines = 0;
 
             while ((line = reader.readLine()) != null) {
+                if (++parsedLines > MAX_PARSED_LINES) {
+                    break;
+                }
                 line = line.trim();
                 if (line.startsWith("---") || (line.contains("instances") && line.contains("bytes"))) {
                     headerFound = true;
@@ -108,7 +116,7 @@ public class HeapHistogramReader {
                         parsedTotalInstances += instances;
                         parsedTotalBytes += bytes;
 
-                        if (topN <= 0 || items.size() < topN) {
+                        if (items.size() < effectiveTopN) {
                             items.add(ClassHistogramItem.of(rank, instances, bytes, className));
                         }
                     } catch (NumberFormatException ignored) {}
