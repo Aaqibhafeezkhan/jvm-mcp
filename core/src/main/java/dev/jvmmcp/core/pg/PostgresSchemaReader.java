@@ -83,8 +83,25 @@ public class PostgresSchemaReader implements AutoCloseable {
         if (host == null || host.isBlank()) {
             throw new IllegalArgumentException("SSRF Protection: Missing host in JDBC URL");
         }
-        if (!host.equalsIgnoreCase("localhost") && !host.equals("127.0.0.1") && !host.equals("::1") && !host.equals("[::1]")) {
+        String cleanHost = host.startsWith("[") && host.endsWith("]") ? host.substring(1, host.length() - 1) : host;
+        boolean isLiteralLoopback = cleanHost.equalsIgnoreCase("localhost")
+            || cleanHost.equals("127.0.0.1")
+            || cleanHost.equals("::1")
+            || cleanHost.equals("0:0:0:0:0:0:0:1");
+
+        if (!isLiteralLoopback) {
             throw new IllegalArgumentException("SSRF Protection: JDBC URL host must target localhost or loopback (got: " + host + ")");
+        }
+
+        try {
+            java.net.InetAddress[] addresses = java.net.InetAddress.getAllByName(cleanHost);
+            for (java.net.InetAddress addr : addresses) {
+                if (!addr.isLoopbackAddress()) {
+                    throw new IllegalArgumentException("SSRF Protection: Resolved address " + addr.getHostAddress() + " for host '" + host + "' is not a loopback address");
+                }
+            }
+        } catch (java.net.UnknownHostException e) {
+            throw new IllegalArgumentException("SSRF Protection: Unable to resolve host '" + host + "': " + e.getMessage(), e);
         }
 
         String query = uri.getQuery();
@@ -103,9 +120,27 @@ public class PostgresSchemaReader implements AutoCloseable {
         }
     }
 
+    private static String buildCacheKey(String jdbcUrl, String username, String password) {
+        String secretHash = "none";
+        if (password != null && !password.isEmpty()) {
+            try {
+                java.security.MessageDigest md = java.security.MessageDigest.getInstance("SHA-256");
+                byte[] digest = md.digest(password.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                StringBuilder hex = new StringBuilder();
+                for (byte b : digest) {
+                    hex.append(String.format("%02x", b));
+                }
+                secretHash = hex.toString();
+            } catch (Exception e) {
+                secretHash = String.valueOf(password.hashCode());
+            }
+        }
+        return jdbcUrl + "|" + (username != null ? username : "") + "|" + secretHash;
+    }
+
     @Override
     public void close() {
-        String cacheKey = jdbcUrl + "|" + (username != null ? username : "") + "|" + (password != null ? password : "");
+        String cacheKey = buildCacheKey(jdbcUrl, username, password);
         synchronized (DATA_SOURCES) {
             HikariDataSource ds = DATA_SOURCES.remove(cacheKey);
             if (ds != null) {
@@ -117,7 +152,7 @@ public class PostgresSchemaReader implements AutoCloseable {
     }
 
     private Connection getConnection() throws SQLException {
-        String cacheKey = jdbcUrl + "|" + (username != null ? username : "") + "|" + (password != null ? password : "");
+        String cacheKey = buildCacheKey(jdbcUrl, username, password);
         
         HikariDataSource ds;
         synchronized (DATA_SOURCES) {

@@ -54,16 +54,41 @@ public class ActuatorClient {
             throw new IllegalArgumentException("SSRF Protection: Malformed or missing host in URL");
         }
         String cleanHost = host.startsWith("[") && host.endsWith("]") ? host.substring(1, host.length() - 1) : host;
-        if (!cleanHost.equals("localhost") && !cleanHost.equals("127.0.0.1") && !cleanHost.equals("::1") && !cleanHost.equals("0:0:0:0:0:0:0:1")) {
-            throw new IllegalArgumentException("SSRF Protection: Actuator URLs must target localhost (got: " + host + ")");
-        }
+        validateLoopbackHost(cleanHost);
         return trimmed.endsWith("/") ? trimmed.substring(0, trimmed.length() - 1) : trimmed;
+    }
+
+    public static void validateLoopbackHost(String host) {
+        if (host == null || host.isBlank()) {
+            throw new IllegalArgumentException("SSRF Protection: Host cannot be empty");
+        }
+        String cleanHost = host.startsWith("[") && host.endsWith("]") ? host.substring(1, host.length() - 1) : host;
+        boolean isLiteralLoopback = cleanHost.equalsIgnoreCase("localhost")
+            || cleanHost.equals("127.0.0.1")
+            || cleanHost.equals("::1")
+            || cleanHost.equals("0:0:0:0:0:0:0:1");
+
+        if (!isLiteralLoopback) {
+            throw new IllegalArgumentException("SSRF Protection: Actuator URLs must target localhost or loopback (got: " + host + ")");
+        }
+
+        try {
+            java.net.InetAddress[] addresses = java.net.InetAddress.getAllByName(cleanHost);
+            for (java.net.InetAddress addr : addresses) {
+                if (!addr.isLoopbackAddress()) {
+                    throw new IllegalArgumentException("SSRF Protection: Resolved address " + addr.getHostAddress() + " for host '" + host + "' is not a loopback address");
+                }
+            }
+        } catch (java.net.UnknownHostException e) {
+            throw new IllegalArgumentException("SSRF Protection: Unable to resolve host '" + host + "': " + e.getMessage(), e);
+        }
     }
 
     private static HttpClient buildHttpClient(ActuatorAuth auth) {
         HttpClient.Builder builder = HttpClient.newBuilder()
             .connectTimeout(Duration.ofMillis(3000));
         if (auth.insecure()) {
+            System.err.println("[jvm-mcp] WARNING: Insecure TLS mode enabled for Actuator. Server certificate verification is disabled.");
             builder.sslContext(trustAllSslContext());
         }
         return builder.build();
@@ -225,17 +250,18 @@ public class ActuatorClient {
 
                 return httpClient.sendAsync(request, limitingStringHandler(MAX_PAYLOAD_SIZE))
                     .thenApply(response -> {
+                        String jsonKey = dev.jvmmcp.core.util.SimpleJson.toJson(name);
                         if (response.statusCode() == 200) {
-                            return "\"" + name + "\": " + response.body();
+                            return jsonKey + ": " + response.body();
                         } else if (response.statusCode() == 404) {
-                            return "\"" + name + "\": null";
+                            return jsonKey + ": null";
                         } else {
                             throw new RuntimeException("HTTP " + response.statusCode());
                         }
                     })
                     .exceptionally(ex -> {
                         System.err.println("Failed to fetch metric " + name + ": " + ex.getMessage());
-                        return "\"" + name + "\": {\"error\": \"Failed to fetch\"}"; 
+                        return dev.jvmmcp.core.util.SimpleJson.toJson(name) + ": {\"error\": \"Failed to fetch\"}"; 
                     });
             })
             .toList();

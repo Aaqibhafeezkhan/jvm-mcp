@@ -44,7 +44,7 @@ class SimpleJsonTest {
                     "timeoutMs": 1500,
                     "ratio": 0.85
                 },
-                'singleQuoted': 'value',
+                "standardString": "value",
                 "emptyObj": {},
                 "emptyArr": []
             }
@@ -61,7 +61,7 @@ class SimpleJsonTest {
         assertThat(map.get("active")).isEqualTo(true);
         assertThat(map.get("disabled")).isEqualTo(false);
         assertThat(map.get("emptyValue")).isNull();
-        assertThat(map.get("singleQuoted")).isEqualTo("value");
+        assertThat(map.get("standardString")).isEqualTo("value");
 
         @SuppressWarnings("unchecked")
         List<Object> tags = (List<Object>) map.get("tags");
@@ -158,4 +158,46 @@ class SimpleJsonTest {
         assertThat(parsed).isEqualTo(original);
     }
 
+    @Test
+    @DisplayName("parse should strictly reject non-standard single-quoted strings")
+    void shouldRejectSingleQuotedStrings() {
+        assertThatThrownBy(() -> SimpleJson.parse("'single'"))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("Unexpected character");
+
+        assertThatThrownBy(() -> SimpleJson.parse("{\"key\": 'value'}"))
+            .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    @DisplayName("parse should strictly reject trailing content after a valid JSON value")
+    void shouldRejectTrailingContentAfterJsonValue() {
+        assertThatThrownBy(() -> SimpleJson.parse("{\"jsonrpc\":\"2.0\"} basura"))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("Trailing content");
+
+        assertThatThrownBy(() -> SimpleJson.parse("true anything"))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("Trailing content");
+
+        assertThatThrownBy(() -> SimpleJson.parse("[1, 2, 3] trailing"))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("Trailing content");
+
+        assertThatThrownBy(() -> SimpleJson.parse("\"valid string\" extra"))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("Trailing content");
+    }
+
+    public record SampleRecord(String title, int count) {}
+
+    @Test
+    @DisplayName("toJson should serialize public Java records cleanly")
+    void shouldSerializeRecordWithoutRequiringAccessibleOverride() {
+        SampleRecord record = new SampleRecord("metrics", 42);
+        String json = SimpleJson.toJson(record);
+        assertThat(json).contains("\"title\":\"metrics\"");
+        assertThat(json).contains("\"count\":42");
+    }
 }
+

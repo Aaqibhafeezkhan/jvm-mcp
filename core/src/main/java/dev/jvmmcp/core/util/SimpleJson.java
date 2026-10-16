@@ -106,7 +106,11 @@ public final class SimpleJson {
                 sb.append(toJson(component.getName(), depth + 1)).append(":");
                 try {
                     java.lang.reflect.Method accessor = component.getAccessor();
-                    accessor.setAccessible(true);
+                    if (!accessor.canAccess(obj)) {
+                        try {
+                            accessor.setAccessible(true);
+                        } catch (Exception ignored) {}
+                    }
                     sb.append(toJson(accessor.invoke(obj), depth + 1));
                 } catch (Exception e) {
                     sb.append("null");
@@ -128,7 +132,14 @@ public final class SimpleJson {
             return null;
         }
         Tokenizer tokenizer = new Tokenizer(trimmed);
-        return parseValue(tokenizer);
+        Object value = parseValue(tokenizer);
+        tokenizer.skipWhitespace();
+        if (tokenizer.hasMore()) {
+            throw new IllegalArgumentException(
+                "Trailing content after JSON value at position " + tokenizer.getIndex()
+            );
+        }
+        return value;
     }
 
     private static Object parseValue(Tokenizer tokenizer) {
@@ -139,7 +150,7 @@ public final class SimpleJson {
             return parseObject(tokenizer);
         } else if (c == '[') {
             return parseArray(tokenizer);
-        } else if (c == '"' || c == '\'') {
+        } else if (c == '"') {
             return parseString(tokenizer);
         } else if (c == 't' || c == 'f') {
             return parseBoolean(tokenizer);
@@ -224,8 +235,8 @@ public final class SimpleJson {
 
     private static String parseString(Tokenizer tokenizer) {
         char quote = tokenizer.consume();
-        if (quote != '"' && quote != '\'') {
-            throw new IllegalArgumentException("Expected quote at " + tokenizer.getIndex());
+        if (quote != '"') {
+            throw new IllegalArgumentException("Expected '\"' at position " + (tokenizer.getIndex() - 1));
         }
 
         StringBuilder sb = new StringBuilder();

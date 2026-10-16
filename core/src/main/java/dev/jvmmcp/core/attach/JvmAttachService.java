@@ -39,6 +39,8 @@ public class JvmAttachService {
 
             long currentPid = ProcessHandle.current().pid();
             boolean isSelf = (pid == currentPid);
+            java.util.Optional<ProcessHandle> processHandle = ProcessHandle.of(pid);
+            boolean isAttachable = processHandle.isPresent() && (isSelf || processHandle.get().isAlive());
 
             result.add(new JvmProcess(
                 pid,
@@ -46,7 +48,7 @@ public class JvmAttachService {
                 mainClass,
                 isSelf ? System.getProperty("java.version") : "unknown",
                 framework,
-                true
+                isAttachable
             ));
         }
 

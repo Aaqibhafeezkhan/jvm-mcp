@@ -166,4 +166,30 @@ class ActuatorClientTest {
             .isInstanceOf(RuntimeException.class)
             .hasMessageContaining("HTTP 500");
     }
+
+    @Test
+    void testSSRFProtectionRejectsNonLoopback() {
+        assertThatThrownBy(() -> new ActuatorClient("http://google.com:8080", ActuatorAuth.NONE))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("SSRF Protection");
+
+        assertThatThrownBy(() -> new ActuatorClient("http://192.168.1.1:8080", ActuatorAuth.NONE))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("SSRF Protection");
+    }
+
+    @Test
+    void testInsecureAuthLogsWarningAndBuildsClient() {
+        ActuatorAuth insecureAuth = ActuatorAuth.basic("admin", "admin", true);
+        ActuatorClient insecureClient = new ActuatorClient("http://127.0.0.1:" + port, insecureAuth);
+        assertThat(insecureClient).isNotNull();
+    }
+
+    @Test
+    void testMetricsBatchEscapesSpecialCharacters() {
+        java.util.List<String> metrics = java.util.List.of("metric\"with\"quotes");
+        String res = client.getMetricsBatch(metrics);
+        assertThat(res).contains("\"metric\\\"with\\\"quotes\"");
+    }
 }
+
