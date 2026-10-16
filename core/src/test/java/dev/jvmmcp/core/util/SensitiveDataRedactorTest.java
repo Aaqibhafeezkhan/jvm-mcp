@@ -69,4 +69,36 @@ class SensitiveDataRedactorTest {
             .contains("Active session token: *** for user")
             .doesNotContain(part3);
     }
+
+    @Test
+    @DisplayName("Recursively redacts secrets in nested maps and lists")
+    @SuppressWarnings("unchecked")
+    void testRedactDeepWithNestedStructures() {
+        java.util.Map<String, Object> innerMap = new java.util.LinkedHashMap<>();
+        innerMap.put("dbUrl", "jdbc:postgresql://appuser:superSecretPass@localhost:5432/appdb");
+        innerMap.put("normalKey", "harmlessValue");
+
+        java.util.List<Object> list = new java.util.ArrayList<>();
+        list.add("Authorization: Bearer secret-bearer-999");
+        list.add(innerMap);
+        list.add(12345);
+
+        java.util.Map<String, Object> root = new java.util.LinkedHashMap<>();
+        root.put("items", list);
+        root.put("header", "Authorization: Basic dXNlcjpwYXNz");
+
+        Object deepSanitized = SensitiveDataRedactor.redactDeep(root);
+        assertThat(deepSanitized).isInstanceOf(java.util.Map.class);
+
+        java.util.Map<String, Object> sanitizedMap = (java.util.Map<String, Object>) deepSanitized;
+        assertThat(sanitizedMap.get("header")).isEqualTo("Authorization: Basic ***");
+
+        java.util.List<Object> sanitizedList = (java.util.List<Object>) sanitizedMap.get("items");
+        assertThat(sanitizedList.get(0)).isEqualTo("Authorization: Bearer ***");
+        assertThat(sanitizedList.get(2)).isEqualTo(12345);
+
+        java.util.Map<String, Object> sanitizedInner = (java.util.Map<String, Object>) sanitizedList.get(1);
+        assertThat(sanitizedInner.get("dbUrl")).isEqualTo("jdbc:postgresql://appuser:***@localhost:5432/appdb");
+        assertThat(sanitizedInner.get("normalKey")).isEqualTo("harmlessValue");
+    }
 }

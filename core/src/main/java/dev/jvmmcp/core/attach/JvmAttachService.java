@@ -87,8 +87,9 @@ public class JvmAttachService {
             }
             java.util.Optional<String> currentUser = ProcessHandle.current().info().user();
             java.util.Optional<String> targetUser = processHandle.get().info().user();
-            if (currentUser.isPresent() && targetUser.isPresent() && !currentUser.get().equals(targetUser.get())) {
-                return AttachResult.permissionDenied(pid, "Target JVM process is owned by a different user (" + targetUser.get() + "). Cross-user attachment is prohibited.");
+            if (isCrossUser(currentUser, targetUser)) {
+                String targetUserName = targetUser.orElse("unknown");
+                return AttachResult.permissionDenied(pid, "Target JVM process is owned by a different user (" + targetUserName + "). Cross-user attachment is prohibited.");
             }
         }
 
@@ -120,6 +121,13 @@ public class JvmAttachService {
         } else {
             return AttachResult.error(pid, "Unexpected error attaching to PID " + pid + ": " + (e != null ? e.getMessage() : ""));
         }
+    }
+
+    static boolean isCrossUser(java.util.Optional<String> currentUser, java.util.Optional<String> targetUser) {
+        if (currentUser.isPresent() && targetUser.isPresent()) {
+            return !currentUser.get().equals(targetUser.get());
+        }
+        return false;
     }
 
     public void detach(VirtualMachine vm) {

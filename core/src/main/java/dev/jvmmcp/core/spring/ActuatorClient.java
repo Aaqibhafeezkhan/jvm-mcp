@@ -53,6 +53,15 @@ public class ActuatorClient {
         if (scheme == null || (!scheme.equalsIgnoreCase("http") && !scheme.equalsIgnoreCase("https"))) {
             throw new IllegalArgumentException("SSRF Protection: URL scheme must be http or https (got: " + scheme + ")");
         }
+        if (uri.getUserInfo() != null) {
+            throw new IllegalArgumentException("SSRF Protection: UserInfo not permitted in Actuator base URL");
+        }
+        if (uri.getQuery() != null) {
+            throw new IllegalArgumentException("SSRF Protection: Query parameters not permitted in Actuator base URL");
+        }
+        if (uri.getFragment() != null) {
+            throw new IllegalArgumentException("SSRF Protection: URI fragments not permitted in Actuator base URL");
+        }
         String host = uri.getHost();
         if (host == null) {
             throw new IllegalArgumentException("SSRF Protection: Malformed or missing host in URL");
@@ -196,7 +205,14 @@ public class ActuatorClient {
         if (targetPath.contains("..") || targetPath.contains("\\")) {
             throw new IllegalArgumentException("SSRF Protection: Path traversal sequences are prohibited in endpoint: " + endpoint);
         }
-        String targetUrl = baseUrl + targetPath;
+        URI baseUri = URI.create(baseUrl);
+        URI resolvedUri = baseUri.resolve(URI.create(targetPath).normalize());
+        if (!Objects.equals(resolvedUri.getScheme(), baseUri.getScheme())
+            || !Objects.equals(resolvedUri.getHost(), baseUri.getHost())
+            || resolvedUri.getPort() != baseUri.getPort()) {
+            throw new IllegalArgumentException("SSRF Protection: Endpoint resolution deviated from base URL");
+        }
+        String targetUrl = resolvedUri.toString();
         
         try {
             HttpRequest request = newRequest(targetUrl).GET().build();

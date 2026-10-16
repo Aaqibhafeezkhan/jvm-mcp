@@ -213,5 +213,20 @@ class ActuatorClientTest {
             .isInstanceOf(IllegalArgumentException.class)
             .hasMessageContaining("SSRF Protection: Path traversal");
     }
+
+    @Test
+    void testSSRFProtectionRejectsUserInfoQueryAndFragment() {
+        assertThatThrownBy(() -> new ActuatorClient("http://user:pass@localhost:8080", ActuatorAuth.NONE))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("SSRF Protection: UserInfo not permitted");
+
+        assertThatThrownBy(() -> new ActuatorClient("http://localhost:8080/actuator?admin=true", ActuatorAuth.NONE))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("SSRF Protection: Query parameters not permitted");
+
+        assertThatThrownBy(() -> new ActuatorClient("http://localhost:8080/actuator#section", ActuatorAuth.NONE))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("SSRF Protection: URI fragments not permitted");
+    }
 }
 

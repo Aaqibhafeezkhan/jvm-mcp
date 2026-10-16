@@ -102,6 +102,21 @@ class JvmAttachServiceTest {
         }
 
         @Test
+        @DisplayName("should evaluate isCrossUser policy deterministically across all permutations")
+        void testIsCrossUserPolicy() {
+            java.util.Optional<String> userA = java.util.Optional.of("alice");
+            java.util.Optional<String> userB = java.util.Optional.of("bob");
+            java.util.Optional<String> sameA = java.util.Optional.of("alice");
+            java.util.Optional<String> empty = java.util.Optional.empty();
+
+            assertThat(JvmAttachService.isCrossUser(userA, userB)).isTrue();
+            assertThat(JvmAttachService.isCrossUser(userA, sameA)).isFalse();
+            assertThat(JvmAttachService.isCrossUser(userA, empty)).isFalse();
+            assertThat(JvmAttachService.isCrossUser(empty, userB)).isFalse();
+            assertThat(JvmAttachService.isCrossUser(empty, empty)).isFalse();
+        }
+
+        @Test
         @DisplayName("should handle non-existent PIDs gracefully and return PROCESS_NOT_FOUND or GENERIC_ERROR status")
         void shouldHandleNonExistentPidGracefully() {
             String nonExistentPid = "999999999";

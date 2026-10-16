@@ -38,6 +38,10 @@ public final class SensitiveDataRedactor {
         "\\beyJ[A-Za-z0-9_-]{10,}\\.[A-Za-z0-9_-]{10,}\\.[A-Za-z0-9_-]*\\b"
     );
 
+    private static final Pattern SENSITIVE_KEY_PATTERN = Pattern.compile(
+        "(?i).*(password|secret|token|apikey|api_key|access_token|client_secret|private_key|auth_token|credential).*"
+    );
+
     private SensitiveDataRedactor() {
     }
 
@@ -61,5 +65,50 @@ public final class SensitiveDataRedactor {
         result = JWT_PATTERN.matcher(result).replaceAll("***");
 
         return result;
+    }
+
+    /**
+     * Recursively traverses and sanitizes nested data structures (Maps, Lists, Strings, Arrays).
+     *
+     * @param obj arbitrary object
+     * @return deep-sanitized clone of the object
+     */
+    public static Object redactDeep(Object obj) {
+        if (obj == null) {
+            return null;
+        }
+        if (obj instanceof String s) {
+            return redact(s);
+        }
+        if (obj instanceof java.util.Map<?, ?> map) {
+            java.util.Map<Object, Object> copy = new java.util.LinkedHashMap<>();
+            for (java.util.Map.Entry<?, ?> entry : map.entrySet()) {
+                Object key = entry.getKey();
+                Object safeKey = key instanceof String sk ? redact(sk) : key;
+                Object val = entry.getValue();
+                if (key instanceof String sk && SENSITIVE_KEY_PATTERN.matcher(sk).matches() && val instanceof String) {
+                    copy.put(safeKey, "***");
+                } else {
+                    copy.put(safeKey, redactDeep(val));
+                }
+            }
+            return copy;
+        }
+        if (obj instanceof java.util.List<?> list) {
+            java.util.List<Object> copy = new java.util.ArrayList<>(list.size());
+            for (Object item : list) {
+                copy.add(redactDeep(item));
+            }
+            return copy;
+        }
+        if (obj.getClass().isArray()) {
+            int length = java.lang.reflect.Array.getLength(obj);
+            java.util.List<Object> copy = new java.util.ArrayList<>(length);
+            for (int i = 0; i < length; i++) {
+                copy.add(redactDeep(java.lang.reflect.Array.get(obj, i)));
+            }
+            return copy;
+        }
+        return obj;
     }
 }

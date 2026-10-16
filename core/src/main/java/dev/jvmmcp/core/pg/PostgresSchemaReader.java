@@ -18,6 +18,7 @@ import java.util.Map;
 public class PostgresSchemaReader implements AutoCloseable {
 
     private static final int MAX_CACHED_POOLS = 5;
+    private static final int QUERY_TIMEOUT_SECONDS = 10;
     
     // LRU Cache for DataSources to prevent connection leaks across different databases
     private static final Map<String, HikariDataSource> DATA_SOURCES = new LinkedHashMap<>(16, 0.75f, true) {
@@ -216,6 +217,7 @@ public class PostgresSchemaReader implements AutoCloseable {
             """;
         List<TableInfo> result = new ArrayList<>();
         try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setQueryTimeout(QUERY_TIMEOUT_SECONDS);
             ps.setString(1, schemaName);
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
@@ -250,6 +252,7 @@ public class PostgresSchemaReader implements AutoCloseable {
             """;
         List<IndexInfo> result = new ArrayList<>();
         try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setQueryTimeout(QUERY_TIMEOUT_SECONDS);
             ps.setString(1, schemaName);
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
@@ -282,10 +285,11 @@ public class PostgresSchemaReader implements AutoCloseable {
             JOIN pg_attribute a_src ON a_src.attrelid = c.conrelid AND a_src.attnum = u.src_attnum
             JOIN pg_attribute a_tgt ON a_tgt.attrelid = c.confrelid AND a_tgt.attnum = u.tgt_attnum
             WHERE c.contype = 'f' 
-              AND n.nspname = ?
+            AND n.nspname = ?
             """;
         List<ForeignKeyInfo> result = new ArrayList<>();
         try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setQueryTimeout(QUERY_TIMEOUT_SECONDS);
             ps.setString(1, schemaName);
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
@@ -337,6 +341,7 @@ public class PostgresSchemaReader implements AutoCloseable {
         List<MissingIndexCandidate> candidates = new ArrayList<>();
         try (Connection conn = getConnection();
              PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setQueryTimeout(QUERY_TIMEOUT_SECONDS);
             ps.setString(1, safeSchema);
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
@@ -356,10 +361,12 @@ public class PostgresSchemaReader implements AutoCloseable {
     public SlowQueryAnalysis findSlowQueries() throws SQLException {
         boolean hasExtension = false;
         try (Connection conn = getConnection()) {
-            try (Statement stmt = conn.createStatement();
-                 ResultSet rs = stmt.executeQuery("SELECT 1 FROM pg_extension WHERE extname = 'pg_stat_statements'")) {
-                if (rs.next()) {
-                    hasExtension = true;
+            try (Statement stmt = conn.createStatement()) {
+                stmt.setQueryTimeout(QUERY_TIMEOUT_SECONDS);
+                try (ResultSet rs = stmt.executeQuery("SELECT 1 FROM pg_extension WHERE extname = 'pg_stat_statements'")) {
+                    if (rs.next()) {
+                        hasExtension = true;
+                    }
                 }
             } catch (SQLException e) {
                 // Ignore, might not have permission to read pg_extension
@@ -394,18 +401,20 @@ public class PostgresSchemaReader implements AutoCloseable {
                 LIMIT 20
                 """;
             List<SlowQueryInfo> slowQueries = new ArrayList<>();
-            try (Statement stmt = conn.createStatement();
-                 ResultSet rs = stmt.executeQuery(sql)) {
-                while (rs.next()) {
-                    String rawQuery = rs.getString("query");
-                    String sanitizedQuery = sanitizeQuery(rawQuery);
-                    slowQueries.add(new SlowQueryInfo(
-                        sanitizedQuery,
-                        rs.getLong("calls"),
-                        rs.getDouble("compatible_mean_time"),
-                        rs.getDouble("compatible_max_time"),
-                        rs.getLong("rows")
-                    ));
+            try (Statement stmt = conn.createStatement()) {
+                stmt.setQueryTimeout(QUERY_TIMEOUT_SECONDS);
+                try (ResultSet rs = stmt.executeQuery(sql)) {
+                    while (rs.next()) {
+                        String rawQuery = rs.getString("query");
+                        String sanitizedQuery = sanitizeQuery(rawQuery);
+                        slowQueries.add(new SlowQueryInfo(
+                            sanitizedQuery,
+                            rs.getLong("calls"),
+                            rs.getDouble("compatible_mean_time"),
+                            rs.getDouble("compatible_max_time"),
+                            rs.getLong("rows")
+                        ));
+                    }
                 }
             } catch (SQLException e) {
                 throw new SQLException("Failed to read pg_stat_statements: " + e.getMessage(), e);
