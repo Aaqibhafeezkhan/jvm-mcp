@@ -146,9 +146,7 @@ jobs:
           ln -s ../jvm-mcp verify_app/test_bin/jvm-mcp
           ./verify_app/test_bin/jvm-mcp --version
           # 3. Protocol smoke test: initialize and tools/list over stdio
-          MCP_INPUT='{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"smoke-test","version":"1.0"}}}
-{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}'
-          MCP_OUTPUT=$(printf '%s\n' "$MCP_INPUT" | ./verify_app/jvm-mcp serve)
+          MCP_OUTPUT=$(printf '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"smoke-test","version":"1.0"}}}\n{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}\n' | ./verify_app/jvm-mcp serve)
           echo "$MCP_OUTPUT" | grep -q '"tools"' || { echo "Smoke test failed: tools/list response missing 'tools'" >&2; exit 1; }
           echo "$MCP_OUTPUT" | grep -q '"protocolVersion":"2024-11-05"' || { echo "Smoke test failed: initialize response missing protocolVersion" >&2; exit 1; }
           echo "Linux/macOS executable and stdio MCP protocol verified successfully."
@@ -162,9 +160,7 @@ jobs:
           "$BINARY_PATH" --version
           "$BINARY_PATH" doctor
           # 2. Protocol smoke test: initialize and tools/list over stdio
-          MCP_INPUT='{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"smoke-test","version":"1.0"}}}
-{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}'
-          MCP_OUTPUT=$(printf '%s\n' "$MCP_INPUT" | "$BINARY_PATH" serve)
+          MCP_OUTPUT=$(printf '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"smoke-test","version":"1.0"}}}\n{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}\n' | "$BINARY_PATH" serve)
           echo "$MCP_OUTPUT" | grep -q '"tools"' || { echo "Windows smoke test failed: tools/list response missing 'tools'" >&2; exit 1; }
           echo "$MCP_OUTPUT" | grep -q '"protocolVersion":"2024-11-05"' || { echo "Windows smoke test failed: initialize response missing protocolVersion" >&2; exit 1; }
           echo "Windows executable and stdio MCP protocol verified successfully."
