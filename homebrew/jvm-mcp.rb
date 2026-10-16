@@ -1,3 +1,10 @@
+# typed: false
+# frozen_string_literal: true
+#
+# Homebrew Formula Template for JVM-MCP
+# Note: This file serves as the distribution template. The version and SHA-256
+# placeholders (REPLACE_WITH_*) are automatically calculated and synchronized
+# by .github/workflows/release.yml when a GitHub release tag is published.
 class JvmMcp < Formula
   desc "Native Java Model Context Protocol (MCP) server for live Spring Boot inspection"
   homepage "https://github.com/oscarbol09/jvm-mcp"

@@ -62,8 +62,8 @@ fi
 
 # Extract expected hash (first space/tab-delimited token)
 EXPECTED_HASH="$(awk '{print $1}' "${SHA_FILE}" | tr -d '\r\n ')"
-if [ -z "${EXPECTED_HASH}" ]; then
-    echo "Error: Checksum file is empty or invalid." >&2
+if [[ ! "${EXPECTED_HASH}" =~ ^[0-9a-fA-F]{64}$ ]]; then
+    echo "Error: Checksum file does not contain a valid 64-character SHA-256 hexadecimal hash: '${EXPECTED_HASH}'" >&2
     exit 1
 fi
 
@@ -91,9 +91,20 @@ fi
 
 echo "SHA-256 checksum verified successfully."
 
-# 6. Extract into target directory
+# 6. Extract into target directory with path traversal protection
 echo "Extracting JVM-MCP to ${INSTALL_DIR}..."
 mkdir -p "${INSTALL_DIR}"
+
+# Audit archive entries before extraction
+while IFS= read -r entry; do
+    case "$entry" in
+        /*|../*|*/../*)
+            echo "Error: Unsafe archive path detected: ${entry}" >&2
+            exit 1
+            ;;
+    esac
+done < <(tar -tzf "${TMP_DIR}/${RELEASE_ASSET}")
+
 tar -xzf "${TMP_DIR}/${RELEASE_ASSET}" -C "${INSTALL_DIR}"
 
 # Ensure binary is executable
@@ -114,18 +125,22 @@ else
     exit 1
 fi
 
-# 8. Update PATH in shell configuration if necessary
+# 8. Update PATH in shell configuration if necessary (idempotent with markers)
 if [[ ":$PATH:" != *":${BIN_DIR}:"* ]]; then
     echo "Adding ${BIN_DIR} to PATH in shell configuration..."
-    
-    # Update Bash
-    if [ -f "${HOME}/.bashrc" ]; then
-        echo "export PATH=\"${BIN_DIR}:\$PATH\"" >> "${HOME}/.bashrc"
-    fi
-    # Update Zsh
-    if [ -f "${HOME}/.zshrc" ]; then
-        echo "export PATH=\"${BIN_DIR}:\$PATH\"" >> "${HOME}/.zshrc"
-    fi
+
+    for rc in "${HOME}/.bashrc" "${HOME}/.zshrc"; do
+        if [ -f "$rc" ]; then
+            if ! grep -q "jvm-mcp" "$rc"; then
+                {
+                    echo ""
+                    echo "# >>> jvm-mcp >>>"
+                    echo "export PATH=\"${BIN_DIR}:\$PATH\""
+                    echo "# <<< jvm-mcp <<<"
+                } >> "$rc"
+            fi
+        fi
+    done
     echo "Please restart your terminal or run: source ~/.bashrc (or ~/.zshrc)"
 fi
 

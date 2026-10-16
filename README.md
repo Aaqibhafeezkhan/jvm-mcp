@@ -84,9 +84,11 @@ Download release packages and corresponding `.sha256` checksums from [GitHub Rel
 
 | Platform / Architecture | Archive Name | Runtime Packaging |
 | :--- | :--- | :--- |
-| Linux (x86_64) | `jvm-mcp-linux-amd64.tar.gz` | Modular JRE (`jlink`) + symlink-safe launcher |
+| Linux (x86_64 / amd64) | `jvm-mcp-linux-amd64.tar.gz` | Modular JRE (`jlink`) + symlink-safe launcher |
+| Linux (ARM64 / aarch64) | `jvm-mcp-linux-aarch64.tar.gz` | Modular JRE (`jlink`) + symlink-safe launcher |
 | macOS (Apple Silicon ARM64) | `jvm-mcp-macos-aarch64.tar.gz` | Modular JRE (`jlink`) + symlink-safe launcher |
-| Windows (x86_64) | `jvm-mcp-windows-amd64.zip` | Standalone application image (`jpackage` .exe) |
+| macOS (Intel x86_64) | `jvm-mcp-macos-amd64.tar.gz` | Modular JRE (`jlink`) + symlink-safe launcher |
+| Windows (x86_64 / amd64) | `jvm-mcp-windows-amd64.zip` | Standalone application image (`jpackage` .exe) |
 
 Verify checksum and unpack:
 ```bash
@@ -179,7 +181,7 @@ The server exposes 14 diagnostic tools to AI assistants:
 | `list_jvms` | Lists running JVMs with PID, display name, and detected framework (Spring Boot, Quarkus, Micronaut). | *None* |
 | `get_memory_summary` | Live heap/non-heap regions, GC pauses, and memory pressure. | `pid` (number) |
 | `get_heap_histogram` | Top class instance counts and memory consumption via `jcmd`. | `pid` (number), `limit` (number, optional) |
-| `get_thread_diagnostics` | Thread states breakdown and automated cycle deadlock detection. | `pid` (number) |
+| `get_thread_diagnostics` | Thread states breakdown and deadlock detection (inspects platform and mounted virtual threads; unmounted virtual threads tracked in #10). | `pid` (number) |
 | `get_thread_dump` | Full formatted thread dump with lock stack traces. | `pid` (number) |
 | `list_spring_beans` | Instantiated beans in Spring ApplicationContext via JMX/Actuator. | `pid` (number), `filter` (string, optional) |
 | `get_bean_detail` | Detailed metadata, autowired dependencies, and scope of a bean. | `pid` (number), `beanName` (string) |
@@ -226,6 +228,7 @@ The server exposes 14 diagnostic tools to AI assistants:
 ## Known Limitations and Trade-offs
 
 - **Container Boundaries:** Direct host attachment across isolated Docker container namespaces fails due to separate PID and IPC namespaces. Attach from within the container namespace, use `--pid=host`, or use Actuator HTTP mode (`jvm-mcp actuator --url ...`).
+- **Virtual Threads Visibility (Project Loom):** Current thread diagnostics leverage the standard JVM `ThreadMXBean`. In Java 21, unmounted virtual threads resting in continuation queues are not surfaced by `ThreadMXBean`. Comprehensive virtual thread inspection using HotSpot thread dumps / JVMTI is tracked under issue [#10](https://github.com/oscarbol09/jvm-mcp/issues/10).
 - **Jlink / Jpackage Bundling:** GraalVM Native Image was evaluated and rejected because `jdk.attach` dynamically loads HotSpot C++ native libraries (`libattach.so` / `attach.dll`), violating Closed-World AOT assumptions. We distribute minimal bundles containing a stripped modular JRE via `jlink` (Linux/macOS) and `jpackage` app images (Windows), maintaining cross-platform parity with startup times under 150ms.
 
 ---
