@@ -53,6 +53,9 @@ jobs:
 
       - name: Build Native Distribution Package
         shell: bash
+        env:
+          MATRIX_OS: ${{ matrix.os }}
+          MATRIX_SUFFIX: ${{ matrix.suffix }}
         run: |
           # Use jlink to assemble custom minimal JRE with required modules
           jlink --add-modules java.base,java.management,java.net.http,java.sql,java.naming,jdk.attach,jdk.management,jdk.management.agent,java.instrument,jdk.internal.jvmstat \
@@ -70,7 +73,7 @@ jobs:
           echo "Found shaded jar: $SHADED_JAR"
           JAR_NAME=$(basename "$SHADED_JAR")
 
-          if [ "${{ matrix.os }}" == "windows-latest" ]; then
+          if [ "$MATRIX_OS" == "windows-latest" ]; then
             jpackage --type app-image \
                      --name jvm-mcp \
                      --input mcp-server/target \
@@ -79,7 +82,7 @@ jobs:
                      --runtime-image custom-jre \
                      --dest build-out
             cd build-out
-            7z a "../jvm-mcp-${{ matrix.suffix }}.zip" jvm-mcp
+            7z a "../jvm-mcp-${MATRIX_SUFFIX}.zip" jvm-mcp
             cd ..
           else
             # Linux and macOS
@@ -103,15 +106,17 @@ jobs:
               echo 'exec "$DIR/custom-jre/bin/java" -jar "$DIR/app.jar" "$@"'
             } > dist/jvm-mcp
             chmod +x dist/jvm-mcp
-            cp dist/jvm-mcp "dist/jvm-mcp-${{ matrix.suffix }}"
-            tar -czvf "jvm-mcp-${{ matrix.suffix }}.tar.gz" -C dist .
+            cp dist/jvm-mcp "dist/jvm-mcp-${MATRIX_SUFFIX}"
+            tar -czvf "jvm-mcp-${MATRIX_SUFFIX}.tar.gz" -C dist .
           fi
 
       - name: Verify Executable (Linux/macOS)
         if: runner.os != 'Windows'
+        env:
+          MATRIX_SUFFIX: ${{ matrix.suffix }}
         run: |
           mkdir -p verify_app
-          tar -xzf "jvm-mcp-${{ matrix.suffix }}.tar.gz" -C verify_app
+          tar -xzf "jvm-mcp-${MATRIX_SUFFIX}.tar.gz" -C verify_app
           # Direct verification
           ./verify_app/jvm-mcp --version
           # Symlink resolution verification
@@ -158,6 +163,9 @@ jobs:
           merge-multiple: true
 
       - name: Calculate Checksums & Synchronize Homebrew Formula
+        env:
+          INPUT_TAG: ${{ inputs.tag_name }}
+          GITHUB_REF_NAME: ${{ github.ref_name }}
         run: |
           cd artifacts
           echo "Release artifacts present in workspace:"
@@ -178,7 +186,7 @@ jobs:
           cd ..
 
           # Populate Homebrew Formula with release version and computed SHA-256 sums
-          TAG="${{ inputs.tag_name || github.ref_name }}"
+          TAG="${INPUT_TAG:-$GITHUB_REF_NAME}"
           VERSION="${TAG#v}"
           echo "Synchronizing Homebrew formula for version ${VERSION}..."
 
