@@ -77,10 +77,27 @@ class JvmAttachServiceTest {
         @DisplayName("should successfully return AttachResult containing a VirtualMachine on valid PID")
         void shouldAttachSuccessfully() {
             try (org.mockito.MockedStatic<VirtualMachine> vmStatic = org.mockito.Mockito.mockStatic(VirtualMachine.class)) {
-                vmStatic.when(() -> VirtualMachine.attach("123")).thenReturn(mockVm);
-                AttachResult result = attachService.attach("123");
+                vmStatic.when(() -> VirtualMachine.attach("888888")).thenReturn(mockVm);
+                AttachResult result = attachService.attach("888888");
                 assertThat(result.isSuccessful()).isTrue();
                 assertThat(result.virtualMachine()).isPresent();
+            }
+        }
+
+        @Test
+        @DisplayName("should reject cross-user attachment when target process user differs from current user")
+        void shouldRejectCrossUserAttachmentWhenTargetUserDiffers() {
+            java.util.Optional<ProcessHandle> otherUserProcess = ProcessHandle.allProcesses()
+                .filter(p -> p.info().user().isPresent() && !p.info().user().equals(ProcessHandle.current().info().user()))
+                .findFirst();
+
+            if (otherUserProcess.isPresent()) {
+                String targetPid = String.valueOf(otherUserProcess.get().pid());
+                AttachResult result = attachService.attach(targetPid);
+
+                assertThat(result.isSuccessful()).isFalse();
+                assertThat(result.status()).isEqualTo(AttachStatus.PERMISSION_DENIED);
+                assertThat(result.message()).contains("Cross-user attachment is prohibited");
             }
         }
 
