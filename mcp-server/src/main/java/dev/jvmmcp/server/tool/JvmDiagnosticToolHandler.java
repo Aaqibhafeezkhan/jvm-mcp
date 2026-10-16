@@ -123,7 +123,7 @@ public class JvmDiagnosticToolHandler implements ToolHandler {
             return Map.of("content", content);
         }
 
-        long pid = ToolArgs.getLongArg(args, "pid", true);
+        long pid = ToolArgs.getPositiveLongArg(args, "pid", true);
         AttachResult attachResult = attachService.attach(String.valueOf(pid));
         if (!attachResult.isSuccessful()) {
             throw new IllegalStateException(attachResult.message());
@@ -141,10 +141,8 @@ public class JvmDiagnosticToolHandler implements ToolHandler {
                     }
                 } else if ("get_heap_histogram".equals(toolName)) {
                     HeapHistogramReader histoReader = new HeapHistogramReader();
-                    long limit = args != null && args.containsKey("limit") ? ToolArgs.getLongArg(args, "limit", false) : 100L;
-                    if (limit <= 0) limit = 100L;
-                    if (limit > 1000) limit = 1000L;
-                    content.add(Map.of("type", "text", "text", SimpleJson.toJson(histoReader.readHistogram(jmxManager.getMBeanServerConnection(), pid, (int) limit))));
+                    int limit = ToolArgs.getIntArg(args, "limit", 100, 1, 1000);
+                    content.add(Map.of("type", "text", "text", SimpleJson.toJson(histoReader.readHistogram(jmxManager.getMBeanServerConnection(), pid, limit))));
                 } else if ("get_thread_diagnostics".equals(toolName)) {
                     try (ThreadMXBeanClient threadClient = new ThreadMXBeanClient(jmxManager.getMBeanServerConnection())) {
                         content.add(Map.of("type", "text", "text", SimpleJson.toJson(threadClient.getThreadSummary(pid))));

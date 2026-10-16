@@ -90,16 +90,12 @@ public class PostgresToolHandler implements ToolHandler {
         List<Map<String, Object>> content = new ArrayList<>();
         try (PostgresSchemaReader reader = readerFactory.create(url, user, password)) {
             if ("inspect_pg_schema".equals(toolName)) {
-                String schema = ToolArgs.getStringArg(args, "schema", false);
-                if (schema == null) {
-                    schema = "public";
-                }
+                String rawSchema = ToolArgs.getStringArg(args, "schema", false);
+                String schema = PostgresSchemaReader.validateSchemaName(rawSchema);
                 content.add(Map.of("type", "text", "text", SimpleJson.toJson(reader.inspectSchema(schema))));
             } else if ("find_missing_indexes".equals(toolName)) {
-                String schema = ToolArgs.getStringArg(args, "schema", false);
-                if (schema == null) {
-                    schema = "public";
-                }
+                String rawSchema = ToolArgs.getStringArg(args, "schema", false);
+                String schema = PostgresSchemaReader.validateSchemaName(rawSchema);
                 content.add(Map.of("type", "text", "text", SimpleJson.toJson(reader.findMissingIndexes(schema))));
             } else if ("find_slow_queries".equals(toolName)) {
                 content.add(Map.of("type", "text", "text", SimpleJson.toJson(reader.findSlowQueries())));

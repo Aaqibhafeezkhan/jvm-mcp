@@ -97,4 +97,37 @@ class ToolArgsTest {
             .isInstanceOf(IllegalArgumentException.class)
             .hasMessageContaining("Argument 'str' must be a number");
     }
+
+    @Test
+    @DisplayName("getPositiveLongArg enforces positive values")
+    void testGetPositiveLongArg() {
+        Map<String, Object> valid = Map.of("pid", 12345L);
+        assertThat(ToolArgs.getPositiveLongArg(valid, "pid", true)).isEqualTo(12345L);
+
+        Map<String, Object> zero = Map.of("pid", 0L);
+        assertThatThrownBy(() -> ToolArgs.getPositiveLongArg(zero, "pid", true))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("must be a positive number");
+
+        Map<String, Object> negative = Map.of("pid", -10L);
+        assertThatThrownBy(() -> ToolArgs.getPositiveLongArg(negative, "pid", true))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("must be a positive number");
+    }
+
+    @Test
+    @DisplayName("getIntArg applies bounds and defaults")
+    void testGetIntArg() {
+        assertThat(ToolArgs.getIntArg(null, "limit", 100, 1, 1000)).isEqualTo(100);
+        assertThat(ToolArgs.getIntArg(Map.of(), "limit", 100, 1, 1000)).isEqualTo(100);
+
+        // Clamping to min
+        assertThat(ToolArgs.getIntArg(Map.of("limit", -50), "limit", 100, 1, 1000)).isEqualTo(1);
+
+        // Clamping to max
+        assertThat(ToolArgs.getIntArg(Map.of("limit", 5000), "limit", 100, 1, 1000)).isEqualTo(1000);
+
+        // Within bounds
+        assertThat(ToolArgs.getIntArg(Map.of("limit", 250), "limit", 100, 1, 1000)).isEqualTo(250);
+    }
 }

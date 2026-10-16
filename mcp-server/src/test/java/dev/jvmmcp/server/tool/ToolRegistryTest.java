@@ -117,6 +117,73 @@ class ToolRegistryTest {
         assertThat(item.get("text").toString()).contains("Error executing tool: Simulated explosion");
     }
 
+    @Test
+    @DisplayName("execute automatically scrubs sensitive tokens and credentials from tool output")
+    void testExecuteRedactsSensitiveDataInContent() {
+        ToolRegistry registry = new ToolRegistry();
+        ToolHandler handler = new StubToolHandler(
+            List.of("secret_tool"),
+            List.of(Map.of("name", "secret_tool")),
+            (name, args) -> Map.of("content", List.of(
+                Map.of("type", "text", "text", "Found connection jdbc:postgresql://postgres:myPass123@localhost/db with token=xyz789")
+            ))
+        );
+        registry.register(handler);
+
+        Map<String, Object> result = registry.execute("secret_tool", Map.of());
+        assertThat(result.get("isError")).isNull();
+        List<?> content = (List<?>) result.get("content");
+        Map<?, ?> item = (Map<?, ?>) content.get(0);
+        String text = item.get("text").toString();
+        assertThat(text)
+            .contains("jdbc:postgresql://postgres:***@localhost/db")
+            .contains("token=***")
+            .doesNotContain("myPass123")
+            .doesNotContain("xyz789");
+    }
+
+    @Test
+    @DisplayName("execute scrubs sensitive credentials from error messages")
+    void testExecuteRedactsSensitiveDataInError() {
+        ToolRegistry registry = new ToolRegistry();
+        ToolHandler handler = new StubToolHandler(
+            List.of("failing_secret"),
+            List.of(Map.of("name", "failing_secret")),
+            (name, args) -> { throw new IllegalStateException("Authentication failed for token=secretApiToken456"); }
+        );
+        registry.register(handler);
+
+        Map<String, Object> result = registry.execute("failing_secret", Map.of());
+        assertThat(result.get("isError")).isEqualTo(true);
+        List<?> content = (List<?>) result.get("content");
+        Map<?, ?> item = (Map<?, ?>) content.get(0);
+        String text = item.get("text").toString();
+        assertThat(text)
+            .contains("token=***")
+            .doesNotContain("secretApiToken456");
+    }
+
+    @Test
+    @DisplayName("execute terminates and flags error when tool execution times out")
+    void testExecuteTimesOutOnHungTool() {
+        ToolRegistry registry = new ToolRegistry(java.time.Duration.ofMillis(200));
+        ToolHandler handler = new StubToolHandler(
+            List.of("hung_tool"),
+            List.of(Map.of("name", "hung_tool")),
+            (name, args) -> {
+                Thread.sleep(1000);
+                return Map.of("content", List.of(Map.of("type", "text", "text", "done")));
+            }
+        );
+        registry.register(handler);
+
+        Map<String, Object> result = registry.execute("hung_tool", Map.of());
+        assertThat(result.get("isError")).isEqualTo(true);
+        List<?> content = (List<?>) result.get("content");
+        Map<?, ?> item = (Map<?, ?>) content.get(0);
+        assertThat(item.get("text").toString()).contains("Tool execution timed out");
+    }
+
     private static class StubToolHandler implements ToolHandler {
         private final List<String> names;
         private final List<Map<String, Object>> defs;

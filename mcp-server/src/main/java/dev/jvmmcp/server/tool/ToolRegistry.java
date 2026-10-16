@@ -1,18 +1,32 @@
 package dev.jvmmcp.server.tool;
 
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
+import dev.jvmmcp.core.util.SensitiveDataRedactor;
+
+import java.time.Duration;
+import java.util.*;
+import java.util.concurrent.*;
 
 /**
  * Manages registration and lookup of ToolHandlers and delegates execution.
+ * Enforces per-tool execution timeouts and automatic redaction of operational secrets.
  */
 public class ToolRegistry {
 
+    private static final Duration DEFAULT_TIMEOUT = Duration.ofSeconds(15);
+
     private final List<ToolHandler> registeredHandlers = new ArrayList<>();
     private final Map<String, ToolHandler> handlerMap = new LinkedHashMap<>();
+    private final Duration toolTimeout;
+    private final ExecutorService executorService;
+
+    public ToolRegistry() {
+        this(DEFAULT_TIMEOUT);
+    }
+
+    public ToolRegistry(Duration toolTimeout) {
+        this.toolTimeout = toolTimeout != null ? toolTimeout : DEFAULT_TIMEOUT;
+        this.executorService = Executors.newVirtualThreadPerTaskExecutor();
+    }
 
     public void register(ToolHandler handler) {
         if (handler == null) {
@@ -48,13 +62,67 @@ public class ToolRegistry {
             );
         }
 
+        CompletableFuture<Map<String, Object>> future = CompletableFuture.supplyAsync(() -> {
+            try {
+                return handler.execute(toolName, arguments);
+            } catch (Exception e) {
+                throw new CompletionException(e);
+            }
+        }, executorService);
+
         try {
-            return handler.execute(toolName, arguments);
-        } catch (Exception e) {
+            Map<String, Object> rawResult = future.get(toolTimeout.toMillis(), TimeUnit.MILLISECONDS);
+            return sanitizeResult(rawResult);
+        } catch (TimeoutException e) {
+            future.cancel(true);
             return Map.of(
-                "content", List.of(Map.of("type", "text", "text", "Error executing tool: " + e.getMessage())),
+                "content", List.of(Map.of("type", "text", "text", "Tool execution timed out after " + toolTimeout.toSeconds() + " seconds: " + toolName)),
+                "isError", true
+            );
+        } catch (ExecutionException e) {
+            Throwable cause = e.getCause() != null ? e.getCause() : e;
+            String sanitizedMsg = SensitiveDataRedactor.redact(cause.getMessage() != null ? cause.getMessage() : "Execution error");
+            return Map.of(
+                "content", List.of(Map.of("type", "text", "text", "Error executing tool: " + sanitizedMsg)),
+                "isError", true
+            );
+        } catch (Exception e) {
+            String sanitizedMsg = SensitiveDataRedactor.redact(e.getMessage() != null ? e.getMessage() : "Execution error");
+            return Map.of(
+                "content", List.of(Map.of("type", "text", "text", "Error executing tool: " + sanitizedMsg)),
                 "isError", true
             );
         }
+    }
+
+    private Map<String, Object> sanitizeResult(Map<String, Object> result) {
+        if (result == null) {
+            return Map.of();
+        }
+        Object contentObj = result.get("content");
+        if (!(contentObj instanceof List<?> list)) {
+            return result;
+        }
+
+        List<Map<String, Object>> sanitizedList = new ArrayList<>();
+        for (Object item : list) {
+            if (item instanceof Map<?, ?> mapItem) {
+                Map<String, Object> copy = new LinkedHashMap<>();
+                for (Map.Entry<?, ?> entry : mapItem.entrySet()) {
+                    String key = Objects.toString(entry.getKey(), "");
+                    Object val = entry.getValue();
+                    if ("text".equals(key) && val instanceof String textVal) {
+                        copy.put(key, SensitiveDataRedactor.redact(textVal));
+                    } else {
+                        copy.put(key, val);
+                    }
+                }
+                sanitizedList.add(copy);
+            }
+        }
+
+        Map<String, Object> newResult = new LinkedHashMap<>(result);
+        newResult.put("content", sanitizedList);
+        return newResult;
     }
 }

@@ -81,7 +81,7 @@ public class SpringBeansToolHandler implements ToolHandler {
 
     @Override
     public Map<String, Object> execute(String toolName, Map<String, Object> args) throws Exception {
-        long pid = ToolArgs.getLongArg(args, "pid", true);
+        long pid = ToolArgs.getPositiveLongArg(args, "pid", true);
         AttachResult attachResult = attachService.attach(String.valueOf(pid));
         if (!attachResult.isSuccessful()) {
             throw new IllegalStateException(attachResult.message());

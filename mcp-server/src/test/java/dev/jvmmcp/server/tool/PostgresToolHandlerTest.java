@@ -114,6 +114,19 @@ class PostgresToolHandlerTest {
     }
 
     @Test
+    @DisplayName("execute throws on invalid or malicious schema name")
+    void testInvalidSchemaNameThrows() {
+        PostgresToolHandler handler = new PostgresToolHandler((url, user, pass) -> mockReader);
+
+        assertThatThrownBy(() -> handler.execute("inspect_pg_schema", Map.of(
+            "url", "jdbc:postgresql://localhost:5432/mydb",
+            "schema", "public; DROP TABLE users;--"
+        )))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("Invalid schema name");
+    }
+
+    @Test
     @DisplayName("execute throws on unknown postgres tool")
     void testUnknownTool() {
         PostgresToolHandler handler = new PostgresToolHandler((url, user, pass) -> mockReader);

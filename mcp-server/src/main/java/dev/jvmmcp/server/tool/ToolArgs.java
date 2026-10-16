@@ -42,4 +42,27 @@ public final class ToolArgs {
         }
         return ((Number) val).longValue();
     }
+
+    public static long getPositiveLongArg(Map<String, Object> args, String key, boolean required) {
+        long value = getLongArg(args, key, required);
+        if (required && value <= 0) {
+            throw new IllegalArgumentException("Argument '" + key + "' must be a positive number (got: " + value + ")");
+        }
+        return value;
+    }
+
+    public static int getIntArg(Map<String, Object> args, String key, int defaultValue, int min, int max) {
+        if (args == null || !args.containsKey(key)) {
+            return defaultValue;
+        }
+        Object val = args.get(key);
+        if (!(val instanceof Number)) {
+            throw new IllegalArgumentException("Argument '" + key + "' must be a number");
+        }
+        int parsed = ((Number) val).intValue();
+        if (parsed < min) {
+            return min;
+        }
+        return Math.min(parsed, max);
+    }
 }
