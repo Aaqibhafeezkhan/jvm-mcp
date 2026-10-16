@@ -205,10 +205,12 @@ The server exposes 14 diagnostic tools to AI assistants:
 
 ## Security & Defense Boundaries
 
-1. **OS Process Boundary:** Enforces OS user (UID/GID) matching. A non-root user cannot attach to other users' processes without operating system elevation.
-2. **PostgreSQL JDBC Hardening:** Enforces `jdbc:postgresql://` protocol, validates loopback resolution, and strips unsafe driver properties (`socketFactory`, `sslrootcert`, `options`) to mitigate SSRF and arbitrary class loading.
-3. **Actuator HTTP Protection:** Enforces host validation and caps response bodies at 30 MB to prevent memory exhaustion from payload tarpits.
-4. **ReDoS & Recursion Guards:** Sanitizes glob wildcards in `GlobMatcher` to prevent quadratic backtracking and bounds `SimpleJson` recursion depth to 100.
+1. **OS Process Boundary & Privileged Access Control:** Enforces numeric PID validation (> 0), process liveness checks, and OS user matching (`ProcessHandle.info().user()`). Cross-user attachment without operating system elevation is strictly rejected.
+2. **Automatic Sensitive Data Redaction:** All diagnostic tool outputs and execution error messages returned over MCP are filtered through `SensitiveDataRedactor` to sanitize Bearer tokens, Basic credentials, passwords, API keys, embedded JDBC passwords, and JWTs.
+3. **Actuator SSRF & Path Traversal Mitigation:** Enforces strict `http`/`https` scheme validation, disables HTTP redirect following (`followRedirects: NEVER`) to eliminate cloud metadata/internal network pivoting, and rejects directory traversal in endpoints.
+4. **PostgreSQL JDBC Hardening & Schema Validation:** Enforces `jdbc:postgresql://` protocol, validates loopback resolution, strips unsafe driver properties (`socketFactory`, `sslrootcert`, `options`), and validates schema names against standard SQL identifier patterns to prevent SQL injection.
+5. **Resource Bounding & Execution Timeouts:** Heap histograms are bounded between 50 and 1,000 entries (capped at 100k lines), arguments are bounded via `ToolArgs`, and all tool invocations execute with an enforced 15-second virtual thread timeout.
+6. **ReDoS & Recursion Guards:** Sanitizes glob wildcards in `GlobMatcher` to prevent quadratic backtracking and bounds `SimpleJson` recursion depth to 100.
 
 ---
 
