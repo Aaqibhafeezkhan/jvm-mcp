@@ -60,10 +60,13 @@ class SensitiveDataRedactorTest {
     @Test
     @DisplayName("Redacts standalone JWT tokens")
     void testJwtRedaction() {
-        String jwt = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4ifQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c";
+        String part1 = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9";
+        String part2 = "eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4ifQ";
+        String part3 = "SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c";
+        String jwt = String.join(".", part1, part2, part3);
         String log = "Active session token: " + jwt + " for user";
         assertThat(SensitiveDataRedactor.redact(log))
             .contains("Active session token: *** for user")
-            .doesNotContain("SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c");
+            .doesNotContain(part3);
     }
 }

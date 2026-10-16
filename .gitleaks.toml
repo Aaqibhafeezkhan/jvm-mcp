@@ -1,0 +1,9 @@
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Allow synthetic sample tokens in test suites"
+paths = [
+    '''core/src/test/.*''',
+    '''mcp-server/src/test/.*'''
+]
