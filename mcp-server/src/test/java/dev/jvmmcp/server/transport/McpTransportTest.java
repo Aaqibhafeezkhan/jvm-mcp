@@ -105,4 +105,22 @@ class McpTransportTest {
         transport.sendResponse(printStream, null);
         assertThat(out.toString()).isEmpty();
     }
+
+    @Test
+    @DisplayName("rejects oversized lines exceeding maximum byte threshold")
+    void testRejectsOversizedLines() {
+        ToolRegistry registry = new ToolRegistry();
+        McpDispatcher dispatcher = new McpDispatcher(registry);
+        McpTransport transport = new McpTransport(dispatcher);
+
+        // Build a line exceeding 4MB
+        String largePadding = "a".repeat(4 * 1024 * 1024 + 10);
+        ByteArrayInputStream in = new ByteArrayInputStream((largePadding + "\n").getBytes(StandardCharsets.UTF_8));
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+
+        int exitCode = transport.start(in, out);
+        assertThat(exitCode).isZero();
+        assertThat(out.toString(StandardCharsets.UTF_8)).contains("-32700");
+    }
 }
+

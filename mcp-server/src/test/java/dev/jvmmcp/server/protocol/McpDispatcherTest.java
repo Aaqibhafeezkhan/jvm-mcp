@@ -193,4 +193,71 @@ class McpDispatcherTest {
         assertThat(internalErr.get("id")).isEqualTo(45);
         assertThat(((Map<?, ?>) internalErr.get("error")).get("code")).isEqualTo(-32603);
     }
+
+    @Test
+    @DisplayName("dispatch returns -32600 when jsonrpc version is missing or invalid")
+    void testInvalidJsonRpcVersion() {
+        String line = "{\"id\":1,\"method\":\"ping\"}";
+        Optional<Map<String, Object>> response = dispatcher.dispatch(line);
+
+        assertThat(response).isPresent();
+        Map<String, Object> resp = response.get();
+        assertThat(resp.get("id")).isEqualTo(1);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> error = (Map<String, Object>) resp.get("error");
+        assertThat(error.get("code")).isEqualTo(-32600);
+        assertThat(error.get("message").toString()).contains("Invalid Request");
+    }
+
+    @Test
+    @DisplayName("dispatch returns -32600 when method is missing or not a string")
+    void testMissingMethod() {
+        String line = "{\"jsonrpc\":\"2.0\",\"id\":1}";
+        Optional<Map<String, Object>> response = dispatcher.dispatch(line);
+
+        assertThat(response).isPresent();
+        Map<String, Object> resp = response.get();
+        assertThat(resp.get("id")).isEqualTo(1);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> error = (Map<String, Object>) resp.get("error");
+        assertThat(error.get("code")).isEqualTo(-32600);
+    }
+
+    @Test
+    @DisplayName("dispatch supports requests with explicit id: null")
+    void testExplicitNullId() {
+        String line = "{\"jsonrpc\":\"2.0\",\"id\":null,\"method\":\"ping\"}";
+        Optional<Map<String, Object>> response = dispatcher.dispatch(line);
+
+        assertThat(response).isPresent();
+        Map<String, Object> resp = response.get();
+        assertThat(resp.get("id")).isNull();
+        assertThat(resp.get("result")).isEqualTo(Map.of());
+    }
+
+    @Test
+    @DisplayName("dispatch sanitizes internal errors and does not expose raw exception text to client")
+    void testInternalErrorSanitization() {
+        ToolRegistry throwingRegistry = new ToolRegistry() {
+            @Override
+            public Map<String, Object> execute(String toolName, Map<String, Object> arguments) {
+                throw new RuntimeException("Sensitive PostgreSQL db password: secret123 at /etc/passwd");
+            }
+        };
+        McpDispatcher throwingDispatcher = new McpDispatcher(throwingRegistry);
+
+        String line = "{\"jsonrpc\":\"2.0\",\"id\":500,\"method\":\"tools/call\",\"params\":{\"name\":\"faulty_tool\",\"arguments\":{}}}";
+        Optional<Map<String, Object>> response = throwingDispatcher.dispatch(line);
+
+        assertThat(response).isPresent();
+        Map<String, Object> resp = response.get();
+        @SuppressWarnings("unchecked")
+        Map<String, Object> error = (Map<String, Object>) resp.get("error");
+        assertThat(error.get("code")).isEqualTo(-32603);
+        String msg = (String) error.get("message");
+        assertThat(msg).doesNotContain("secret123");
+        assertThat(msg).doesNotContain("/etc/passwd");
+        assertThat(msg).contains("Internal error");
+    }
 }
+

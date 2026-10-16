@@ -43,6 +43,8 @@ public class McpTransport {
         return start(in, printStream);
     }
 
+    public static final int MAX_REQUEST_BYTES = 4 * 1024 * 1024; // 4MB
+
     public int start(InputStream in, PrintStream out) {
         ExecutorService executor = customExecutor != null ? customExecutor : Executors.newVirtualThreadPerTaskExecutor();
         try (BufferedReader reader = new BufferedReader(new InputStreamReader(in, StandardCharsets.UTF_8))) {
@@ -51,19 +53,26 @@ public class McpTransport {
                 if (line.trim().isEmpty()) {
                     continue;
                 }
+                if (line.length() > MAX_REQUEST_BYTES) {
+                    System.err.println("[jvm-mcp] Request rejected: line length " + line.length() + " exceeds maximum limit of " + MAX_REQUEST_BYTES + " bytes");
+                    sendResponse(out, dispatcher.formatParseError("Request exceeds maximum size limit of " + MAX_REQUEST_BYTES + " bytes"));
+                    continue;
+                }
                 final String requestLine = line;
                 executor.submit(() -> {
                     try {
                         Optional<Map<String, Object>> response = dispatcher.dispatch(requestLine);
                         response.ifPresent(resp -> sendResponse(out, resp));
-                    } catch (Throwable e) {
+                    } catch (Exception e) {
                         System.err.println("[jvm-mcp] Error processing request: " + e.getMessage());
                         sendResponse(out, dispatcher.formatParseError(e.getMessage()));
                     }
                 });
             }
             executor.shutdown();
-            executor.awaitTermination(5, TimeUnit.SECONDS);
+            if (!executor.awaitTermination(5, TimeUnit.SECONDS)) {
+                executor.shutdownNow();
+            }
         } catch (Exception e) {
             System.err.println("[jvm-mcp] Fatal server error: " + e.getMessage());
             return 1;

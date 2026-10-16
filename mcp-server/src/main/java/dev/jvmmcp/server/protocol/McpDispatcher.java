@@ -40,7 +40,7 @@ public class McpDispatcher {
         try {
             Map<String, Object> req = SimpleJson.parseObject(requestLine);
             return handleRequest(req);
-        } catch (Throwable e) {
+        } catch (Exception e) {
             System.err.println("[jvm-mcp] Error processing request: " + e.getMessage());
             return Optional.of(formatParseError(e.getMessage()));
         }
@@ -57,58 +57,81 @@ public class McpDispatcher {
             return Optional.empty();
         }
 
-        Object id = req.get("id");
-        if (id == null) {
-            // JSON-RPC 2.0: do not respond to notifications
+        // 1. Validate JSON-RPC version
+        Object jsonrpc = req.get("jsonrpc");
+        if (!"2.0".equals(jsonrpc)) {
+            return Optional.of(formatInvalidRequest(req.get("id"), "Invalid Request: 'jsonrpc' must be exactly '2.0'"));
+        }
+
+        // 2. Validate method
+        Object methodObj = req.get("method");
+        if (!(methodObj instanceof String method) || method.isBlank()) {
+            return Optional.of(formatInvalidRequest(req.get("id"), "Invalid Request: 'method' must be a non-empty string"));
+        }
+
+        // 3. Distinguish notifications from requests
+        boolean isNotification = !req.containsKey("id");
+        if (isNotification) {
+            try {
+                processMethod(method, req);
+            } catch (Exception e) {
+                System.err.println("[jvm-mcp] Error processing notification: " + e.getMessage());
+            }
             return Optional.empty();
         }
 
+        Object id = req.get("id");
         Map<String, Object> response = new LinkedHashMap<>();
         response.put("jsonrpc", "2.0");
         response.put("id", id);
 
         try {
-            String method = (String) req.get("method");
-
-            if ("initialize".equals(method)) {
-                response.put("result", Map.of(
-                    "protocolVersion", PROTOCOL_VERSION,
-                    "capabilities", Map.of("tools", Map.of()),
-                    "serverInfo", Map.of("name", serverName, "version", serverVersion)
-                ));
-                return Optional.of(response);
+            Map<String, Object> result = processMethod(method, req);
+            if (result != null && result.containsKey("error")) {
+                response.put("error", result.get("error"));
+            } else {
+                response.put("result", result != null ? result : Map.of());
             }
-
-            if ("ping".equals(method)) {
-                response.put("result", Map.of());
-                return Optional.of(response);
-            }
-
-            if ("tools/list".equals(method)) {
-                response.put("result", Map.of("tools", toolRegistry.getToolsList()));
-                return Optional.of(response);
-            }
-
-            if ("tools/call".equals(method)) {
-                Map<String, Object> params = ToolArgs.asMap(req.get("params"));
-                if (params != null) {
-                    String toolName = (String) params.get("name");
-                    Map<String, Object> args = ToolArgs.asMap(params.get("arguments"));
-                    response.put("result", toolRegistry.execute(toolName, args));
-                    return Optional.of(response);
-                } else {
-                    response.put("error", Map.of("code", -32602, "message", "Invalid params"));
-                    return Optional.of(response);
-                }
-            }
-
-            response.put("error", Map.of("code", -32601, "message", "Method not found"));
             return Optional.of(response);
-        } catch (Throwable e) {
-            System.err.println("[jvm-mcp] Internal error handling request: " + e.getMessage());
-            response.put("error", Map.of("code", -32603, "message", "Internal error: " + e.getMessage()));
+        } catch (Exception e) {
+            String errorRef = java.util.UUID.randomUUID().toString().substring(0, 8);
+            System.err.println("[jvm-mcp] [err-" + errorRef + "] Internal error handling request: " + e.getMessage());
+            response.put("error", Map.of(
+                "code", -32603,
+                "message", "Internal error (ref: " + errorRef + ")"
+            ));
             return Optional.of(response);
         }
+    }
+
+    private Map<String, Object> processMethod(String method, Map<String, Object> req) {
+        if ("initialize".equals(method)) {
+            return Map.of(
+                "protocolVersion", PROTOCOL_VERSION,
+                "capabilities", Map.of("tools", Map.of()),
+                "serverInfo", Map.of("name", serverName, "version", serverVersion)
+            );
+        }
+
+        if ("ping".equals(method)) {
+            return Map.of();
+        }
+
+        if ("tools/list".equals(method)) {
+            return Map.of("tools", toolRegistry.getToolsList());
+        }
+
+        if ("tools/call".equals(method)) {
+            Map<String, Object> params = ToolArgs.asMap(req.get("params"));
+            if (params != null && params.get("name") instanceof String toolName) {
+                Map<String, Object> args = ToolArgs.asMap(params.get("arguments"));
+                return toolRegistry.execute(toolName, args);
+            } else {
+                return Map.of("error", Map.of("code", -32602, "message", "Invalid params"));
+            }
+        }
+
+        return Map.of("error", Map.of("code", -32601, "message", "Method not found"));
     }
 
     public Map<String, Object> formatParseError(String message) {
@@ -116,6 +139,14 @@ public class McpDispatcher {
         errResp.put("jsonrpc", "2.0");
         errResp.put("id", null);
         errResp.put("error", Map.of("code", -32700, "message", "Parse error: " + message));
+        return errResp;
+    }
+
+    public Map<String, Object> formatInvalidRequest(Object id, String message) {
+        Map<String, Object> errResp = new LinkedHashMap<>();
+        errResp.put("jsonrpc", "2.0");
+        errResp.put("id", id);
+        errResp.put("error", Map.of("code", -32600, "message", message != null ? message : "Invalid Request"));
         return errResp;
     }
 
@@ -139,7 +170,7 @@ public class McpDispatcher {
         Map<String, Object> errResp = new LinkedHashMap<>();
         errResp.put("jsonrpc", "2.0");
         errResp.put("id", id);
-        errResp.put("error", Map.of("code", -32603, "message", "Internal error: " + message));
+        errResp.put("error", Map.of("code", -32603, "message", message != null ? message : "Internal error"));
         return errResp;
     }
 }

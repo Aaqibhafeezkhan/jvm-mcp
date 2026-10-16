@@ -14,8 +14,8 @@ import java.util.concurrent.Callable;
 @Command(name = "serve", description = "Starts the JVM-MCP server", mixinStandardHelpOptions = true)
 public class ServeCommand implements Callable<Integer> {
 
-    @Option(names = "--transport", defaultValue = "stdio", description = "Transport protocol: stdio or sse") String transport;
-    @Option(names = "--spring", description = "Use Spring AI layer (SSE, dashboard, slower startup)") boolean useSpring;
+    @Option(names = "--transport", defaultValue = "stdio", description = "Transport protocol: stdio (planned/experimental: sse)") String transport;
+    @Option(names = "--spring", hidden = true, description = "Experimental Spring AI layer (planned)") boolean useSpring;
     @Option(names = "--attach", description = "Target PID to attach explicitly before serving") Integer targetPid;
     @Option(names = "--actuator", description = "Target Actuator Base URL (e.g. http://localhost:8080)") String actuatorUrl;
 
