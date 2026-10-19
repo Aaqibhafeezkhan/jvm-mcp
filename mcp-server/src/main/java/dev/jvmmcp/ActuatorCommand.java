@@ -30,8 +30,13 @@ public class ActuatorCommand implements Callable<Integer> {
     @Option(names = "--insecure", description = "Disable TLS certificate validation")
     private boolean insecure;
 
-    @Parameters(index = "0", description = "Endpoint to query: health, metrics, startup, or metrics/<name>")
-    private String endpoint;
+    @Parameters(
+        index = "0",
+        arity = "0..1",
+        defaultValue = "health",
+        description = "Endpoint to query: health, metrics, startup, or metrics/<name> (default: health)"
+    )
+    private String endpoint = "health";
 
     @Override
     public Integer call() {
