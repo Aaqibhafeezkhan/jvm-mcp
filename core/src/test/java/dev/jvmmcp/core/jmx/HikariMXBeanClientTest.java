@@ -271,8 +271,33 @@ class HikariMXBeanClientTest {
             assertThat(pools.get(0).saturationRatio()).isEqualTo(-1.0);
         }
     }
+
+    @Test
+    @DisplayName("does not blame CPU or GC when maximum pool size is unknown")
+    void shouldHandleUnknownMaximumPoolSize() throws Exception {
+        ObjectName poolName =
+            new ObjectName("com.zaxxer.hikari:type=Pool,name=UnknownMaxPool");
+        ObjectName configName =
+            new ObjectName("com.zaxxer.hikari:type=PoolConfig,name=UnknownMaxPool");
+
+        when(mockMbsc.getAttribute(poolName, "ActiveConnections")).thenReturn(10);
+        when(mockMbsc.getAttribute(poolName, "IdleConnections")).thenReturn(0);
+        when(mockMbsc.getAttribute(poolName, "TotalConnections")).thenReturn(10);
+        when(mockMbsc.getAttribute(poolName, "ThreadsAwaitingConnection")).thenReturn(1);
+        when(mockMbsc.getAttribute(configName, "MaximumPoolSize"))
+            .thenThrow(new InstanceNotFoundException("PoolConfig unavailable"));
+
+        try (HikariMXBeanClient client = new HikariMXBeanClient(mockMbsc)) {
+            HikariPoolStatistics statistics = client.readPool(poolName);
+
+            assertThat(statistics.maximumPoolSize()).isEqualTo(-1);
+            assertThat(statistics.health().status()).isEqualTo("DEGRADED");
+            assertThat(statistics.health().recommendation())
+                .contains("maximumPoolSize unknown")
+                .doesNotContain("CPU starvation")
+                .doesNotContain("GC pause");
+        }
+    }
 }
-
-
 
 

@@ -105,9 +105,12 @@ public class HikariMXBeanClient implements HikariDiagnosticPort {
         if (waiting > 0 && active == max && max > 0) {
             status = "EXHAUSTED";
             recommendation = "CRITICAL: True Connection Starvation detected. Pool is fully active and " + waiting + " thread(s) are blocked. Investigate connection leaks or increase maximumPoolSize.";
-        } else if (waiting > 0) {
+        } else if (waiting > 0 && max > 0 && active < max) {
             status = "DEGRADED";
-            recommendation = "WARNING: Threads awaiting connection (" + waiting + "), but pool is not fully active. This indicates CPU starvation, OS scheduling issues, or a severe GC pause (Clock Leap) rather than DB pool exhaustion.";
+            recommendation = "WARNING: Threads awaiting connection (" + waiting + "), but pool is not fully active (" + active + "/" + max + "). This indicates CPU starvation, OS scheduling issues, or a severe GC pause (Clock Leap) rather than DB pool exhaustion.";
+        } else if (waiting > 0 && max <= 0) {
+            status = "DEGRADED";
+            recommendation = "WARNING: " + waiting + " thread(s) awaiting connection and maximumPoolSize unknown. Cannot determine pool saturation — check connection health and pool configuration.";
         } else if (saturation >= 0.90) {
             status = "DEGRADED";
             recommendation = "WARNING: Pool saturation is at " + Math.round(saturation * 100) + "%. High risk of starvation during traffic spikes.";
