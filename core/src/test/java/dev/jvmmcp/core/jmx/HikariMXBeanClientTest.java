@@ -8,15 +8,21 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import javax.management.MBeanServerConnection;
+import javax.management.AttributeNotFoundException;
+import javax.management.InstanceNotFoundException;
 import javax.management.ObjectName;
 import java.io.IOException;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -140,6 +146,61 @@ class HikariMXBeanClientTest {
         assertThat(pool.threadsAwaitingConnection()).isGreaterThanOrEqualTo(0);
         assertThat(pool.maximumPoolSize()).isEqualTo(5);
         assertThat(pool.saturationRatio()).isBetween(0.0, 1.0);
+    }
+
+    static Stream<Exception> poolReadFailures() {
+        return Stream.of(
+            new InstanceNotFoundException("Pool was removed"),
+            new AttributeNotFoundException("IdleConnections is unavailable"),
+            new IOException("Pool read failed")
+        );
+    }
+
+    @ParameterizedTest
+    @MethodSource("poolReadFailures")
+    @DisplayName("getPools keeps healthy pools before and after an unreadable pool")
+    void shouldKeepHealthyPoolsWhenOneReadFails(Exception failure) throws Exception {
+        ObjectName before = new ObjectName("com.zaxxer.hikari:type=Pool (Before)");
+        ObjectName broken = new ObjectName("com.zaxxer.hikari:type=Pool (Broken)");
+        ObjectName after = new ObjectName("com.zaxxer.hikari:type=Pool,name=After");
+        when(mockMbsc.queryNames(any(), any())).thenReturn(
+            new LinkedHashSet<>(List.of(before, broken)),
+            new LinkedHashSet<>(List.of(broken, after))
+        );
+        stubHealthyPool(before);
+        stubHealthyPool(after);
+        when(mockMbsc.getAttribute(broken, "ActiveConnections")).thenReturn(1);
+        when(mockMbsc.getAttribute(broken, "IdleConnections")).thenThrow(failure);
+
+        try (HikariMXBeanClient client = new HikariMXBeanClient(mockMbsc)) {
+            List<HikariPoolStatistics> pools = client.getPools();
+
+            assertThat(pools).extracting(HikariPoolStatistics::poolName).containsExactly("Before", "After");
+            assertThat(pools).extracting(HikariPoolStatistics::activeConnections).containsExactly(1, 1);
+        }
+        verify(mockMbsc).getAttribute(broken, "IdleConnections");
+    }
+
+    @Test
+    @DisplayName("getPools returns an empty list when every discovered pool has disappeared")
+    void shouldReturnEmptyWhenAllPoolsDisappear() throws Exception {
+        ObjectName broken = new ObjectName("com.zaxxer.hikari:type=Pool (Gone)");
+        when(mockMbsc.queryNames(any(), any())).thenReturn(Set.of(broken));
+        when(mockMbsc.getAttribute(broken, "ActiveConnections"))
+            .thenThrow(new InstanceNotFoundException("Pool was removed"));
+
+        try (HikariMXBeanClient client = new HikariMXBeanClient(mockMbsc)) {
+            assertThat(client.getPools()).isEmpty();
+        }
+    }
+
+    private void stubHealthyPool(ObjectName poolName) throws Exception {
+        when(mockMbsc.getAttribute(poolName, "ActiveConnections")).thenReturn(1);
+        when(mockMbsc.getAttribute(poolName, "IdleConnections")).thenReturn(2);
+        when(mockMbsc.getAttribute(poolName, "TotalConnections")).thenReturn(3);
+        when(mockMbsc.getAttribute(poolName, "ThreadsAwaitingConnection")).thenReturn(0);
+        ObjectName configName = new ObjectName(poolName.toString().replace("type=Pool", "type=PoolConfig"));
+        when(mockMbsc.getAttribute(configName, "MaximumPoolSize")).thenReturn(5);
     }
 
     @Test

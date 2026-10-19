@@ -47,7 +47,11 @@ public class HikariMXBeanClient implements HikariDiagnosticPort {
             List<HikariPoolStatistics> pools = new ArrayList<>();
 
             for (ObjectName poolName : poolNames) {
-                pools.add(readPool(poolName));
+                try {
+                    pools.add(readPool(poolName));
+                } catch (IOException e) {
+                    System.err.println("[jvm-mcp] Skipping unreadable HikariCP pool " + poolName + ": " + e.getMessage());
+                }
             }
 
             return pools;
