@@ -142,11 +142,15 @@ class ThreadsCommandTest {
         when(mockAttachService.attach(String.valueOf(targetPid))).thenReturn(AttachResult.success(String.valueOf(targetPid), null));
 
         ThreadMXBeanClient mockClient = org.mockito.Mockito.mock(ThreadMXBeanClient.class);
-        ThreadDump dump = new ThreadDump(targetPid, java.time.Instant.now(), 2, java.util.List.of(
+        String parkedLock = "java.util.concurrent.locks.AbstractQueuedSynchronizer$ConditionObject@6f1c4a3";
+        ThreadDump dump = new ThreadDump(targetPid, java.time.Instant.now(), 3, java.util.List.of(
             new dev.jvmmcp.core.model.ThreadDetail(2L, "Worker", "WAITING", null, null, null, 0L, 0L, 0L, 0L, false, false, java.util.List.of(
                 new dev.jvmmcp.core.model.ThreadStackFrame("Class", "method", "Class.java", 10, false)
             )),
-            new dev.jvmmcp.core.model.ThreadDetail(3L, "Worker2", "WAITING", "Lock-B", 3L, "Owner", 0L, 0L, 0L, 0L, false, false, java.util.List.of())
+            new dev.jvmmcp.core.model.ThreadDetail(3L, "Worker2", "WAITING", "Lock-B", 3L, "Owner", 0L, 0L, 0L, 0L, false, false, java.util.List.of()),
+            new dev.jvmmcp.core.model.ThreadDetail(4L, "Parked", "WAITING", parkedLock, null, null, 0L, 0L, 0L, 0L, false, false, java.util.List.of(
+                new dev.jvmmcp.core.model.ThreadStackFrame("java.lang.Object", "wait", "Object.java", 480, true)
+            ))
         ));
         when(mockClient.getThreadDump(targetPid)).thenReturn(dump);
 
@@ -168,6 +172,25 @@ class ThreadsCommandTest {
             assertThat(output).contains("\"Worker\" #2 [WAITING]");
             assertThat(output).contains("at Class.method(Class.java:10)");
             assertThat(output).contains("waiting on Lock-B held by Owner (ID 3)");
+
+            // Owner present: lock owner name and ID must stay intact.
+            String ownedLockBlock = dumpBlock(output, "\"Worker2\" #3 [WAITING]");
+            assertThat(ownedLockBlock).contains("waiting on Lock-B held by Owner (ID 3)");
+
+            // Owner absent but lock name present (WAITING/parked condition threads):
+            // the lock must be reported without materialising "null" owner details.
+            String parkedBlock = dumpBlock(output, "\"Parked\" #4 [WAITING]");
+            assertThat(parkedBlock).contains("waiting on");
+            assertThat(parkedBlock).contains(parkedLock);
+            assertThat(parkedBlock).doesNotContain("held by null");
+            assertThat(parkedBlock).doesNotContain("ID null");
+            assertThat(parkedBlock).doesNotContain("null");
+
+            // No lock at all: the waiting line must be omitted entirely.
+            String noLockBlock = dumpBlock(output, "\"Worker\" #2 [WAITING]");
+            assertThat(noLockBlock).contains("at Class.method(Class.java:10)");
+            assertThat(noLockBlock).doesNotContain("waiting on");
+            assertThat(noLockBlock).doesNotContain("held by");
         } finally {
             System.setOut(originalOut);
         }
@@ -265,5 +288,17 @@ class ThreadsCommandTest {
     void shouldInitializeWithDefaultConstructor() {
         ThreadsCommand command = new ThreadsCommand();
         assertThat(command).isNotNull();
+    }
+
+    /**
+     * Extracts the printed dump block of a single thread, from its {@code "name" #id [STATE]} header
+     * up to the blank line that terminates the block.
+     */
+    private static String dumpBlock(String output, String threadHeader) {
+        int start = output.indexOf(threadHeader);
+        assertThat(start).as("thread header '%s' present in dump", threadHeader).isNotNegative();
+        String blankLine = System.lineSeparator() + System.lineSeparator();
+        int end = output.indexOf(blankLine, start);
+        return end < 0 ? output.substring(start) : output.substring(start, end);
     }
 }

@@ -160,8 +160,12 @@ public class ThreadsCommand implements Callable<Integer> {
         for (ThreadDetail t : dump.threads()) {
             System.out.printf("\"%s\" #%d [%s]%n", t.threadName(), t.threadId(), t.state());
             if (t.lockName() != null) {
-                System.out.printf("  waiting on %s held by %s (ID %s)%n", 
-                    t.lockName(), t.lockOwnerName(), t.lockOwnerId());
+                if (t.lockOwnerId() != null) {
+                    System.out.printf("  waiting on %s held by %s (ID %s)%n",
+                        t.lockName(), t.lockOwnerName(), t.lockOwnerId());
+                } else {
+                    System.out.printf("  waiting on %s%n", t.lockName());
+                }
             }
             for (ThreadStackFrame frame : t.stackTrace()) {
                 System.out.println("    at " + frame);
