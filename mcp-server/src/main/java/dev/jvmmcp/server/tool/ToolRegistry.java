@@ -32,8 +32,16 @@ public class ToolRegistry implements AutoCloseable {
         if (handler == null) {
             return;
         }
+        List<String> names = new ArrayList<>(handler.toolNames());
+        Set<String> uniqueNames = new HashSet<>();
+        // Validate the whole handler before changing either registration index.
+        for (String name : names) {
+            if (handlerMap.containsKey(name) || !uniqueNames.add(name)) {
+                throw new IllegalArgumentException("Duplicate tool registration for: " + name);
+            }
+        }
         registeredHandlers.add(handler);
-        for (String name : handler.toolNames()) {
+        for (String name : names) {
             handlerMap.put(name, handler);
         }
     }
@@ -46,11 +54,13 @@ public class ToolRegistry implements AutoCloseable {
     }
 
     public List<Map<String, Object>> getToolsList() {
-        List<Map<String, Object>> tools = new ArrayList<>();
+        Map<String, Map<String, Object>> tools = new LinkedHashMap<>();
         for (ToolHandler handler : registeredHandlers) {
-            tools.addAll(handler.toolDefinitions());
+            for (Map<String, Object> definition : handler.toolDefinitions()) {
+                tools.putIfAbsent((String) definition.get("name"), definition);
+            }
         }
-        return tools;
+        return new ArrayList<>(tools.values());
     }
 
     public Map<String, Object> execute(String toolName, Map<String, Object> arguments) {

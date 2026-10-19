@@ -8,8 +8,82 @@ import java.util.Map;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class ToolRegistryTest {
+
+    @Test
+    void rejectsRepeatedHandlerWithoutChangingTheRegistry() {
+        try (ToolRegistry registry = new ToolRegistry()) {
+            ToolHandler handler = new StubToolHandler(
+                List.of("tool"), List.of(Map.of("name", "tool")), (name, args) -> Map.of()
+            );
+            registry.register(handler);
+
+            assertThatThrownBy(() -> registry.register(handler))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("Duplicate tool registration for: tool");
+            assertThat(registry.getHandler("tool")).containsSame(handler);
+            assertThat(registry.getToolsList()).containsExactly(Map.of("name", "tool"));
+        }
+    }
+
+    @Test
+    void rejectsCollisionsBeforeRegisteringAnyToolsFromTheNewHandler() {
+        try (ToolRegistry registry = new ToolRegistry()) {
+            ToolHandler original = new StubToolHandler(
+                List.of("shared"), List.of(Map.of("name", "shared")),
+                (name, args) -> Map.of("source", "original")
+            );
+            ToolHandler conflicting = new StubToolHandler(
+                List.of("new", "shared"),
+                List.of(Map.of("name", "new"), Map.of("name", "shared")),
+                (name, args) -> Map.of("source", "replacement")
+            );
+            registry.register(original);
+
+            assertThatThrownBy(() -> registry.register(conflicting))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("Duplicate tool registration for: shared");
+            assertThat(registry.getHandler("new")).isEmpty();
+            assertThat(registry.execute("shared", Map.of())).containsEntry("source", "original");
+            assertThat(registry.getToolsList()).containsExactly(Map.of("name", "shared"));
+        }
+    }
+
+    @Test
+    void rejectsDuplicateNamesWithinOneHandler() {
+        try (ToolRegistry registry = new ToolRegistry()) {
+            ToolHandler handler = new StubToolHandler(
+                List.of("tool", "tool"), List.of(Map.of("name", "tool")), (name, args) -> Map.of()
+            );
+
+            assertThatThrownBy(() -> registry.register(handler))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("Duplicate tool registration for: tool");
+            assertThat(registry.getHandler("tool")).isEmpty();
+            assertThat(registry.getToolsList()).isEmpty();
+        }
+    }
+
+    @Test
+    void listsEachDefinitionOnceInFirstSeenOrder() {
+        try (ToolRegistry registry = new ToolRegistry()) {
+            Map<String, Object> first = Map.of("name", "first", "description", "original");
+            Map<String, Object> second = Map.of("name", "second");
+            registry.register(new StubToolHandler(
+                List.of("first"),
+                List.of(first, Map.of("name", "first", "description", "duplicate")),
+                (name, args) -> Map.of()
+            ));
+            registry.register(new StubToolHandler(
+                List.of("second"), List.of(first, second, second), (name, args) -> Map.of()
+            ));
+
+            assertThat(registry.getToolsList()).containsExactly(first, second);
+            assertThat(registry.getToolsList()).containsExactly(first, second);
+        }
+    }
 
     @Test
     @DisplayName("register and getHandler returns correct handler for registered tool")
