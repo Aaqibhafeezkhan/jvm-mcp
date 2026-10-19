@@ -128,7 +128,7 @@ class ActuatorCommandTest {
             int exitCode = cmd.execute("actuator", "--url", serverBaseUrl);
 
             assertThat(exitCode).isZero();
-            assertThat(out.toString()).contains("\\"status\\":\\"UP\\"");
+            assertThat(out.toString()).contains("\"status\":\"UP\"");
         } finally {
             System.setOut(originalOut);
         }
