@@ -4,10 +4,15 @@ import com.sun.net.httpserver.HttpServer;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.io.IOException;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
+import java.net.http.HttpClient;
+import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -17,6 +22,35 @@ class ActuatorClientTest {
     private HttpServer server;
     private int port;
     private ActuatorClient client;
+
+    @ParameterizedTest
+    @ValueSource(strings = {"", "/", "//", "////", "/app", "/app/", "/app///"})
+    void testBatchMetricsNormalizesTrailingSlashes(String suffix) {
+        String expectedPath = (suffix.startsWith("/app") ? "/app" : "")
+            + "/actuator/metrics/jvm.memory.used";
+        List<String> paths = new CopyOnWriteArrayList<>();
+        server.removeContext("/actuator/metrics/jvm.memory.used");
+        server.createContext(expectedPath, exchange -> {
+            paths.add(exchange.getRequestURI().getRawPath());
+            byte[] response = "{\"measurements\":[{\"value\":12345}]}".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+            exchange.sendResponseHeaders(200, response.length);
+            try (OutputStream os = exchange.getResponseBody()) {
+                os.write(response);
+            }
+        });
+
+        String baseUrl = "http://127.0.0.1:" + port + suffix;
+        try (HttpClient httpClient = HttpClient.newHttpClient()) {
+            for (ActuatorClient batchClient : List.of(
+                new ActuatorClient(baseUrl, ActuatorAuth.NONE),
+                new ActuatorClient(baseUrl, ActuatorAuth.NONE, httpClient)
+            )) {
+                assertThat(batchClient.getMetricsBatch(List.of("jvm.memory.used")))
+                    .isEqualTo("{\"jvm.memory.used\": {\"measurements\":[{\"value\":12345}]}}");
+            }
+        }
+        assertThat(paths).containsExactly(expectedPath, expectedPath);
+    }
 
     @BeforeEach
     void setUp() throws IOException {

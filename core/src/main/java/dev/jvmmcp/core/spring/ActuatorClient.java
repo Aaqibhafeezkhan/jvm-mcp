@@ -68,7 +68,7 @@ public class ActuatorClient {
         }
         String cleanHost = host.startsWith("[") && host.endsWith("]") ? host.substring(1, host.length() - 1) : host;
         validateLoopbackHost(cleanHost);
-        return trimmed.endsWith("/") ? trimmed.substring(0, trimmed.length() - 1) : trimmed;
+        return trimmed.replaceAll("/+$", "");
     }
 
     public static void validateLoopbackHost(String host) {
