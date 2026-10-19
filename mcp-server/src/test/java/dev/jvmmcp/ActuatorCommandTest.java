@@ -118,6 +118,23 @@ class ActuatorCommandTest {
     }
 
     @Test
+    @DisplayName("actuator command should default to health when endpoint is omitted")
+    void shouldDefaultToHealthWhenEndpointOmitted() {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        PrintStream originalOut = System.out;
+        try {
+            System.setOut(new PrintStream(out));
+            CommandLine cmd = new CommandLine(new JvmMcp());
+            int exitCode = cmd.execute("actuator", "--url", serverBaseUrl);
+
+            assertThat(exitCode).isZero();
+            assertThat(out.toString()).contains("\"status\":\"UP\"");
+        } finally {
+            System.setOut(originalOut);
+        }
+    }
+
+    @Test
     @DisplayName("actuator command should query metrics successfully")
     void shouldQueryMetrics() {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
