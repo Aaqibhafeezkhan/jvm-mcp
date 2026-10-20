@@ -11,10 +11,13 @@ import picocli.CommandLine;
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockConstruction;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -134,5 +137,286 @@ class PgCommandTest {
         } finally {
             System.setErr(originalErr);
         }
+    }
+
+    @Test
+    @DisplayName("pg command falls back to PGUSER and PGPASSWORD when CLI options are omitted")
+    void shouldFallbackToEnvironmentCredentialsWhenNotSupplied() throws Exception {
+        PostgresSchemaReader mockReader = mock(PostgresSchemaReader.class);
+        when(mockReader.inspectSchema("public")).thenReturn(new PostgresModels.SchemaInfo("public", List.of(), List.of(), List.of()));
+
+        Map<String, String> env = Map.of("PGUSER", "env_user", "PGPASSWORD", "env_secret");
+        AtomicReference<String> capturedUser = new AtomicReference<>();
+        AtomicReference<String> capturedPassword = new AtomicReference<>();
+
+        PgCommand command = new PgCommand((url, user, pass) -> {
+            capturedUser.set(user);
+            capturedPassword.set(pass);
+            return mockReader;
+        }, env::get);
+
+        int exitCode = new CommandLine(command).execute(
+            "--url", "jdbc:postgresql://localhost:5432/db",
+            "--action", "schema"
+        );
+
+        assertThat(exitCode).isZero();
+        assertThat(capturedUser.get()).isEqualTo("env_user");
+        assertThat(capturedPassword.get()).isEqualTo("env_secret");
+        verify(mockReader).inspectSchema("public");
+    }
+
+    @Test
+    @DisplayName("pg command explicit CLI options override PGUSER and PGPASSWORD environment variables")
+    void shouldPreferCliCredentialsOverEnvironmentVariables() throws Exception {
+        PostgresSchemaReader mockReader = mock(PostgresSchemaReader.class);
+        when(mockReader.inspectSchema("public")).thenReturn(new PostgresModels.SchemaInfo("public", List.of(), List.of(), List.of()));
+
+        Map<String, String> env = Map.of("PGUSER", "env_user", "PGPASSWORD", "env_secret");
+        AtomicReference<String> capturedUser = new AtomicReference<>();
+        AtomicReference<String> capturedPassword = new AtomicReference<>();
+
+        PgCommand command = new PgCommand((url, user, pass) -> {
+            capturedUser.set(user);
+            capturedPassword.set(pass);
+            return mockReader;
+        }, env::get);
+
+        int exitCode = new CommandLine(command).execute(
+            "--url", "jdbc:postgresql://localhost:5432/db",
+            "--user", "cli_user",
+            "--password", "cli_secret",
+            "--action", "schema"
+        );
+
+        assertThat(exitCode).isZero();
+        assertThat(capturedUser.get()).isEqualTo("cli_user");
+        assertThat(capturedPassword.get()).isEqualTo("cli_secret");
+    }
+
+    @Test
+    @DisplayName("pg command allows partial CLI override with environment fallback for password")
+    void shouldAllowPartialCliOverrideWithEnvFallback() throws Exception {
+        PostgresSchemaReader mockReader = mock(PostgresSchemaReader.class);
+        when(mockReader.inspectSchema("public")).thenReturn(new PostgresModels.SchemaInfo("public", List.of(), List.of(), List.of()));
+
+        Map<String, String> env = Map.of("PGUSER", "env_user", "PGPASSWORD", "env_secret");
+        AtomicReference<String> capturedUser = new AtomicReference<>();
+        AtomicReference<String> capturedPassword = new AtomicReference<>();
+
+        PgCommand command = new PgCommand((url, user, pass) -> {
+            capturedUser.set(user);
+            capturedPassword.set(pass);
+            return mockReader;
+        }, env::get);
+
+        int exitCode = new CommandLine(command).execute(
+            "--url", "jdbc:postgresql://localhost:5432/db",
+            "-u", "cli_user",
+            "--action", "schema"
+        );
+
+        assertThat(exitCode).isZero();
+        assertThat(capturedUser.get()).isEqualTo("cli_user");
+        assertThat(capturedPassword.get()).isEqualTo("env_secret");
+    }
+
+    @Test
+    @DisplayName("pg command allows partial CLI override with environment fallback for user")
+    void shouldAllowPartialCliOverrideWithEnvUserFallback() throws Exception {
+        PostgresSchemaReader mockReader = mock(PostgresSchemaReader.class);
+        when(mockReader.inspectSchema("public")).thenReturn(new PostgresModels.SchemaInfo("public", List.of(), List.of(), List.of()));
+
+        Map<String, String> env = Map.of("PGUSER", "env_user", "PGPASSWORD", "env_secret");
+        AtomicReference<String> capturedUser = new AtomicReference<>();
+        AtomicReference<String> capturedPassword = new AtomicReference<>();
+
+        PgCommand command = new PgCommand((url, user, pass) -> {
+            capturedUser.set(user);
+            capturedPassword.set(pass);
+            return mockReader;
+        }, env::get);
+
+        int exitCode = new CommandLine(command).execute(
+            "--url", "jdbc:postgresql://localhost:5432/db",
+            "--password", "cli_secret",
+            "--action", "schema"
+        );
+
+        assertThat(exitCode).isZero();
+        assertThat(capturedUser.get()).isEqualTo("env_user");
+        assertThat(capturedPassword.get()).isEqualTo("cli_secret");
+    }
+
+    @Test
+    @DisplayName("pg command allows partial CLI override with short -p option and environment user fallback")
+    void shouldAllowPartialCliOverrideWithShortPasswordOption() throws Exception {
+        PostgresSchemaReader mockReader = mock(PostgresSchemaReader.class);
+        when(mockReader.inspectSchema("public")).thenReturn(new PostgresModels.SchemaInfo("public", List.of(), List.of(), List.of()));
+
+        Map<String, String> env = Map.of("PGUSER", "env_user", "PGPASSWORD", "env_secret");
+        AtomicReference<String> capturedUser = new AtomicReference<>();
+        AtomicReference<String> capturedPassword = new AtomicReference<>();
+
+        PgCommand command = new PgCommand((url, user, pass) -> {
+            capturedUser.set(user);
+            capturedPassword.set(pass);
+            return mockReader;
+        }, env::get);
+
+        int exitCode = new CommandLine(command).execute(
+            "--url", "jdbc:postgresql://localhost:5432/db",
+            "-p", "cli_secret",
+            "--action", "schema"
+        );
+
+        assertThat(exitCode).isZero();
+        assertThat(capturedUser.get()).isEqualTo("env_user");
+        assertThat(capturedPassword.get()).isEqualTo("cli_secret");
+    }
+
+    @Test
+    @DisplayName("pg command falls back to PG_USER and PG_PASSWORD when standard PGUSER/PGPASSWORD are absent")
+    void shouldFallbackToUnderscoreEnvVariablesWhenStandardAbsent() throws Exception {
+        PostgresSchemaReader mockReader = mock(PostgresSchemaReader.class);
+        when(mockReader.inspectSchema("public")).thenReturn(new PostgresModels.SchemaInfo("public", List.of(), List.of(), List.of()));
+
+        Map<String, String> env = Map.of("PG_USER", "underscore_user", "PG_PASSWORD", "underscore_pass");
+        AtomicReference<String> capturedUser = new AtomicReference<>();
+        AtomicReference<String> capturedPassword = new AtomicReference<>();
+
+        PgCommand command = new PgCommand((url, user, pass) -> {
+            capturedUser.set(user);
+            capturedPassword.set(pass);
+            return mockReader;
+        }, env::get);
+
+        int exitCode = new CommandLine(command).execute(
+            "--url", "jdbc:postgresql://localhost:5432/db",
+            "--action", "schema"
+        );
+
+        assertThat(exitCode).isZero();
+        assertThat(capturedUser.get()).isEqualTo("underscore_user");
+        assertThat(capturedPassword.get()).isEqualTo("underscore_pass");
+        verify(mockReader).inspectSchema("public");
+    }
+
+    @Test
+    @DisplayName("pg command prefers standard PGUSER and PGPASSWORD over PG_USER and PG_PASSWORD aliases")
+    void shouldPreferStandardEnvVariablesOverUnderscoreAliases() throws Exception {
+        PostgresSchemaReader mockReader = mock(PostgresSchemaReader.class);
+        when(mockReader.inspectSchema("public")).thenReturn(new PostgresModels.SchemaInfo("public", List.of(), List.of(), List.of()));
+
+        Map<String, String> env = Map.of(
+            "PGUSER", "std_user",
+            "PG_USER", "alt_user",
+            "PGPASSWORD", "std_pass",
+            "PG_PASSWORD", "alt_pass"
+        );
+        AtomicReference<String> capturedUser = new AtomicReference<>();
+        AtomicReference<String> capturedPassword = new AtomicReference<>();
+
+        PgCommand command = new PgCommand((url, user, pass) -> {
+            capturedUser.set(user);
+            capturedPassword.set(pass);
+            return mockReader;
+        }, env::get);
+
+        int exitCode = new CommandLine(command).execute(
+            "--url", "jdbc:postgresql://localhost:5432/db",
+            "--action", "schema"
+        );
+
+        assertThat(exitCode).isZero();
+        assertThat(capturedUser.get()).isEqualTo("std_user");
+        assertThat(capturedPassword.get()).isEqualTo("std_pass");
+    }
+
+    @Test
+    @DisplayName("pg command CLI options override all environment aliases")
+    void shouldPreferCliValuesOverAllEnvironmentAliases() throws Exception {
+        PostgresSchemaReader mockReader = mock(PostgresSchemaReader.class);
+        when(mockReader.inspectSchema("public")).thenReturn(new PostgresModels.SchemaInfo("public", List.of(), List.of(), List.of()));
+
+        Map<String, String> env = Map.of(
+            "PGUSER", "std_user",
+            "PG_USER", "alt_user",
+            "PGPASSWORD", "std_pass",
+            "PG_PASSWORD", "alt_pass"
+        );
+        AtomicReference<String> capturedUser = new AtomicReference<>();
+        AtomicReference<String> capturedPassword = new AtomicReference<>();
+
+        PgCommand command = new PgCommand((url, user, pass) -> {
+            capturedUser.set(user);
+            capturedPassword.set(pass);
+            return mockReader;
+        }, env::get);
+
+        int exitCode = new CommandLine(command).execute(
+            "--url", "jdbc:postgresql://localhost:5432/db",
+            "--user", "cli_user",
+            "--password", "cli_pass",
+            "--action", "schema"
+        );
+
+        assertThat(exitCode).isZero();
+        assertThat(capturedUser.get()).isEqualTo("cli_user");
+        assertThat(capturedPassword.get()).isEqualTo("cli_pass");
+    }
+
+    @Test
+    @DisplayName("pg command allows partial CLI user override with PG_PASSWORD fallback")
+    void shouldAllowPartialCliOverrideWithUnderscoreEnvFallback() throws Exception {
+        PostgresSchemaReader mockReader = mock(PostgresSchemaReader.class);
+        when(mockReader.inspectSchema("public")).thenReturn(new PostgresModels.SchemaInfo("public", List.of(), List.of(), List.of()));
+
+        Map<String, String> env = Map.of("PG_USER", "alt_user", "PG_PASSWORD", "alt_pass");
+        AtomicReference<String> capturedUser = new AtomicReference<>();
+        AtomicReference<String> capturedPassword = new AtomicReference<>();
+
+        PgCommand command = new PgCommand((url, user, pass) -> {
+            capturedUser.set(user);
+            capturedPassword.set(pass);
+            return mockReader;
+        }, env::get);
+
+        int exitCode = new CommandLine(command).execute(
+            "--url", "jdbc:postgresql://localhost:5432/db",
+            "-u", "cli_user",
+            "--action", "schema"
+        );
+
+        assertThat(exitCode).isZero();
+        assertThat(capturedUser.get()).isEqualTo("cli_user");
+        assertThat(capturedPassword.get()).isEqualTo("alt_pass");
+    }
+
+    @Test
+    @DisplayName("pg command allows partial CLI password override with PG_USER fallback")
+    void shouldAllowPartialCliPasswordOverrideWithUnderscoreEnvUserFallback() throws Exception {
+        PostgresSchemaReader mockReader = mock(PostgresSchemaReader.class);
+        when(mockReader.inspectSchema("public")).thenReturn(new PostgresModels.SchemaInfo("public", List.of(), List.of(), List.of()));
+
+        Map<String, String> env = Map.of("PG_USER", "alt_user", "PG_PASSWORD", "alt_pass");
+        AtomicReference<String> capturedUser = new AtomicReference<>();
+        AtomicReference<String> capturedPassword = new AtomicReference<>();
+
+        PgCommand command = new PgCommand((url, user, pass) -> {
+            capturedUser.set(user);
+            capturedPassword.set(pass);
+            return mockReader;
+        }, env::get);
+
+        int exitCode = new CommandLine(command).execute(
+            "--url", "jdbc:postgresql://localhost:5432/db",
+            "-p", "cli_pass",
+            "--action", "schema"
+        );
+
+        assertThat(exitCode).isZero();
+        assertThat(capturedUser.get()).isEqualTo("alt_user");
+        assertThat(capturedPassword.get()).isEqualTo("cli_pass");
     }
 }

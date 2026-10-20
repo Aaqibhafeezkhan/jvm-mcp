@@ -7,6 +7,7 @@ import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
 
 import java.util.concurrent.Callable;
+import java.util.function.Function;
 
 @Command(
     name = "pg",
@@ -14,6 +15,27 @@ import java.util.concurrent.Callable;
     description = "Inspect PostgreSQL schema, missing indexes, and slow queries."
 )
 public class PgCommand implements Callable<Integer> {
+
+    @FunctionalInterface
+    public interface SchemaReaderFactory {
+        PostgresSchemaReader create(String url, String user, String password) throws Exception;
+    }
+
+    private final SchemaReaderFactory readerFactory;
+    private final Function<String, String> envProvider;
+
+    public PgCommand() {
+        this(PostgresSchemaReader::new, System::getenv);
+    }
+
+    public PgCommand(Function<String, String> envProvider) {
+        this(PostgresSchemaReader::new, envProvider);
+    }
+
+    public PgCommand(SchemaReaderFactory readerFactory, Function<String, String> envProvider) {
+        this.readerFactory = readerFactory;
+        this.envProvider = envProvider;
+    }
 
     @Option(names = {"--url"}, required = true, description = "JDBC URL (e.g. jdbc:postgresql://localhost:5432/mydb)")
     private String url;
@@ -36,7 +58,23 @@ public class PgCommand implements Callable<Integer> {
 
     @Override
     public Integer call() {
-        try (PostgresSchemaReader reader = new PostgresSchemaReader(url, user, password)) {
+        String effectiveUser;
+        if (this.user != null) {
+            effectiveUser = this.user;
+        } else {
+            String envUser = envProvider.apply("PGUSER");
+            effectiveUser = envUser != null ? envUser : envProvider.apply("PG_USER");
+        }
+
+        String effectivePassword;
+        if (this.password != null) {
+            effectivePassword = this.password;
+        } else {
+            String envPassword = envProvider.apply("PGPASSWORD");
+            effectivePassword = envPassword != null ? envPassword : envProvider.apply("PG_PASSWORD");
+        }
+
+        try (PostgresSchemaReader reader = readerFactory.create(url, effectiveUser, effectivePassword)) {
             switch (action) {
                 case "schema" -> {
                     SchemaInfo info = reader.inspectSchema(schema);

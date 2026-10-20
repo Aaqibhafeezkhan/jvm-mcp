@@ -7,6 +7,7 @@ import picocli.CommandLine.Option;
 import picocli.CommandLine.Parameters;
 
 import java.util.concurrent.Callable;
+import java.util.function.Function;
 
 @Command(
     name = "actuator",
@@ -14,6 +15,27 @@ import java.util.concurrent.Callable;
     description = "Remotely inspect Spring Boot Actuator endpoints (health, metrics, startup)."
 )
 public class ActuatorCommand implements Callable<Integer> {
+
+    @FunctionalInterface
+    public interface ActuatorClientFactory {
+        ActuatorClient create(String url, ActuatorAuth auth);
+    }
+
+    private final ActuatorClientFactory clientFactory;
+    private final Function<String, String> envProvider;
+
+    public ActuatorCommand() {
+        this(ActuatorClient::new, System::getenv);
+    }
+
+    public ActuatorCommand(Function<String, String> envProvider) {
+        this(ActuatorClient::new, envProvider);
+    }
+
+    public ActuatorCommand(ActuatorClientFactory clientFactory, Function<String, String> envProvider) {
+        this.clientFactory = clientFactory;
+        this.envProvider = envProvider;
+    }
 
     @Option(names = {"--url"}, required = true, description = "Target Actuator Base URL (e.g. http://localhost:8080)")
     private String url;
@@ -41,9 +63,19 @@ public class ActuatorCommand implements Callable<Integer> {
     @Override
     public Integer call() {
         try {
-            ActuatorAuth auth = token != null 
-                ? ActuatorAuth.bearer(token, insecure) 
-                : ActuatorAuth.basic(user, password, insecure);
+            ActuatorAuth auth;
+            if (token != null) {
+                auth = ActuatorAuth.bearer(token, insecure);
+            } else if (user != null || password != null) {
+                String effectiveUser = user != null ? user : envProvider.apply("ACTUATOR_USER");
+                String effectivePassword = password != null ? password : envProvider.apply("ACTUATOR_PASSWORD");
+                auth = ActuatorAuth.basic(effectiveUser, effectivePassword, insecure);
+            } else {
+                String envToken = envProvider.apply("ACTUATOR_TOKEN");
+                String envUser = envProvider.apply("ACTUATOR_USER");
+                String envPassword = envProvider.apply("ACTUATOR_PASSWORD");
+                auth = new ActuatorAuth(envUser, envPassword, envToken, insecure);
+            }
                 
             auth.validate().ifPresent(error -> {
                 throw new IllegalArgumentException(error);
@@ -53,7 +85,7 @@ public class ActuatorCommand implements Callable<Integer> {
                 System.err.println("WARNING: Sending Actuator credentials over unencrypted HTTP.");
             }
 
-            ActuatorClient client = new ActuatorClient(url, auth);
+            ActuatorClient client = clientFactory.create(url, auth);
             
             String result;
             if ("health".equalsIgnoreCase(endpoint)) {

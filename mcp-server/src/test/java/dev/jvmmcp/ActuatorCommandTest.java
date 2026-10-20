@@ -1,6 +1,8 @@
 package dev.jvmmcp;
 
 import com.sun.net.httpserver.HttpServer;
+import dev.jvmmcp.core.spring.ActuatorAuth;
+import dev.jvmmcp.core.spring.ActuatorClient;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
@@ -12,8 +14,12 @@ import java.io.OutputStream;
 import java.io.PrintStream;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
+import java.util.Map;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 class ActuatorCommandTest {
 
@@ -268,5 +274,253 @@ class ActuatorCommandTest {
         } finally {
             System.setErr(originalErr);
         }
+    }
+
+    @Test
+    @DisplayName("actuator command falls back to ACTUATOR_TOKEN from environment")
+    void shouldFallbackToActuatorTokenFromEnvironment() {
+        ActuatorClient mockClient = mock(ActuatorClient.class);
+        when(mockClient.getHealth()).thenReturn("{\"status\":\"UP\"}");
+
+        Map<String, String> env = Map.of("ACTUATOR_TOKEN", "env_bearer_token");
+        AtomicReference<ActuatorAuth> capturedAuth = new AtomicReference<>();
+
+        ActuatorCommand command = new ActuatorCommand((url, auth) -> {
+            capturedAuth.set(auth);
+            return mockClient;
+        }, env::get);
+
+        int exitCode = new CommandLine(command).execute("--url", "http://localhost:8080", "health");
+
+        assertThat(exitCode).isZero();
+        assertThat(capturedAuth.get()).isNotNull();
+        assertThat(capturedAuth.get().bearerToken()).isEqualTo("env_bearer_token");
+        assertThat(capturedAuth.get().user()).isNull();
+        assertThat(capturedAuth.get().password()).isNull();
+    }
+
+    @Test
+    @DisplayName("actuator command falls back to ACTUATOR_USER and ACTUATOR_PASSWORD from environment")
+    void shouldFallbackToActuatorBasicAuthFromEnvironment() {
+        ActuatorClient mockClient = mock(ActuatorClient.class);
+        when(mockClient.getHealth()).thenReturn("{\"status\":\"UP\"}");
+
+        Map<String, String> env = Map.of("ACTUATOR_USER", "env_user", "ACTUATOR_PASSWORD", "env_pass");
+        AtomicReference<ActuatorAuth> capturedAuth = new AtomicReference<>();
+
+        ActuatorCommand command = new ActuatorCommand((url, auth) -> {
+            capturedAuth.set(auth);
+            return mockClient;
+        }, env::get);
+
+        int exitCode = new CommandLine(command).execute("--url", "http://localhost:8080", "health");
+
+        assertThat(exitCode).isZero();
+        assertThat(capturedAuth.get()).isNotNull();
+        assertThat(capturedAuth.get().user()).isEqualTo("env_user");
+        assertThat(capturedAuth.get().password()).isEqualTo("env_pass");
+        assertThat(capturedAuth.get().bearerToken()).isNull();
+    }
+
+    @Test
+    @DisplayName("actuator command explicit CLI token overrides environment basic auth and token")
+    void shouldPreferCliTokenOverEnvironmentCredentials() {
+        ActuatorClient mockClient = mock(ActuatorClient.class);
+        when(mockClient.getHealth()).thenReturn("{\"status\":\"UP\"}");
+
+        Map<String, String> env = Map.of(
+            "ACTUATOR_USER", "env_user",
+            "ACTUATOR_PASSWORD", "env_pass",
+            "ACTUATOR_TOKEN", "env_token"
+        );
+        AtomicReference<ActuatorAuth> capturedAuth = new AtomicReference<>();
+
+        ActuatorCommand command = new ActuatorCommand((url, auth) -> {
+            capturedAuth.set(auth);
+            return mockClient;
+        }, env::get);
+
+        int exitCode = new CommandLine(command).execute("--url", "http://localhost:8080", "--token", "cli_token", "health");
+
+        assertThat(exitCode).isZero();
+        assertThat(capturedAuth.get()).isNotNull();
+        assertThat(capturedAuth.get().bearerToken()).isEqualTo("cli_token");
+        assertThat(capturedAuth.get().user()).isNull();
+        assertThat(capturedAuth.get().password()).isNull();
+    }
+
+    @Test
+    @DisplayName("actuator command explicit CLI basic auth overrides environment token")
+    void shouldPreferCliBasicAuthOverEnvironmentToken() {
+        ActuatorClient mockClient = mock(ActuatorClient.class);
+        when(mockClient.getHealth()).thenReturn("{\"status\":\"UP\"}");
+
+        Map<String, String> env = Map.of("ACTUATOR_TOKEN", "env_token");
+        AtomicReference<ActuatorAuth> capturedAuth = new AtomicReference<>();
+
+        ActuatorCommand command = new ActuatorCommand((url, auth) -> {
+            capturedAuth.set(auth);
+            return mockClient;
+        }, env::get);
+
+        int exitCode = new CommandLine(command).execute(
+            "--url", "http://localhost:8080",
+            "--user", "cli_user",
+            "--password", "cli_pass",
+            "health"
+        );
+
+        assertThat(exitCode).isZero();
+        assertThat(capturedAuth.get()).isNotNull();
+        assertThat(capturedAuth.get().user()).isEqualTo("cli_user");
+        assertThat(capturedAuth.get().password()).isEqualTo("cli_pass");
+        assertThat(capturedAuth.get().bearerToken()).isNull();
+    }
+
+    @Test
+    @DisplayName("actuator command falls back to ACTUATOR_PASSWORD when only user provided on CLI")
+    void shouldFallbackPasswordFromEnvironmentWhenOnlyUserProvidedOnCli() {
+        ActuatorClient mockClient = mock(ActuatorClient.class);
+        when(mockClient.getHealth()).thenReturn("{\"status\":\"UP\"}");
+
+        Map<String, String> env = Map.of("ACTUATOR_PASSWORD", "env_pass");
+        AtomicReference<ActuatorAuth> capturedAuth = new AtomicReference<>();
+
+        ActuatorCommand command = new ActuatorCommand((url, auth) -> {
+            capturedAuth.set(auth);
+            return mockClient;
+        }, env::get);
+
+        int exitCode = new CommandLine(command).execute(
+            "--url", "http://localhost:8080",
+            "--user", "cli_user",
+            "health"
+        );
+
+        assertThat(exitCode).isZero();
+        assertThat(capturedAuth.get()).isNotNull();
+        assertThat(capturedAuth.get().user()).isEqualTo("cli_user");
+        assertThat(capturedAuth.get().password()).isEqualTo("env_pass");
+        assertThat(capturedAuth.get().bearerToken()).isNull();
+    }
+
+    @Test
+    @DisplayName("actuator command falls back to ACTUATOR_USER when only password provided on CLI")
+    void shouldFallbackUserFromEnvironmentWhenOnlyPasswordProvidedOnCli() {
+        ActuatorClient mockClient = mock(ActuatorClient.class);
+        when(mockClient.getHealth()).thenReturn("{\"status\":\"UP\"}");
+
+        Map<String, String> env = Map.of("ACTUATOR_USER", "env_user");
+        AtomicReference<ActuatorAuth> capturedAuth = new AtomicReference<>();
+
+        ActuatorCommand command = new ActuatorCommand((url, auth) -> {
+            capturedAuth.set(auth);
+            return mockClient;
+        }, env::get);
+
+        int exitCode = new CommandLine(command).execute(
+            "--url", "http://localhost:8080",
+            "--password", "cli_pass",
+            "health"
+        );
+
+        assertThat(exitCode).isZero();
+        assertThat(capturedAuth.get()).isNotNull();
+        assertThat(capturedAuth.get().user()).isEqualTo("env_user");
+        assertThat(capturedAuth.get().password()).isEqualTo("cli_pass");
+        assertThat(capturedAuth.get().bearerToken()).isNull();
+    }
+
+    @Test
+    @DisplayName("actuator command fails when both token and basic auth are provided in environment")
+    void shouldFailWhenBothTokenAndBasicAuthInEnvironment() {
+        ByteArrayOutputStream err = new ByteArrayOutputStream();
+        PrintStream originalErr = System.err;
+        try {
+            System.setErr(new PrintStream(err));
+            Map<String, String> env = Map.of(
+                "ACTUATOR_TOKEN", "env_token",
+                "ACTUATOR_USER", "env_user",
+                "ACTUATOR_PASSWORD", "env_pass"
+            );
+
+            ActuatorCommand command = new ActuatorCommand((url, auth) -> mock(ActuatorClient.class), env::get);
+            int exitCode = new CommandLine(command).execute("--url", "http://localhost:8080", "health");
+
+            assertThat(exitCode).isEqualTo(1);
+            assertThat(err.toString()).contains("Use either --actuator-token or --actuator-user/--actuator-password, not both.");
+        } finally {
+            System.setErr(originalErr);
+        }
+    }
+
+    @Test
+    @DisplayName("actuator command fails when only ACTUATOR_USER is provided in environment")
+    void shouldFailWhenOnlyActuatorUserProvidedInEnvironment() {
+        ByteArrayOutputStream err = new ByteArrayOutputStream();
+        PrintStream originalErr = System.err;
+        try {
+            System.setErr(new PrintStream(err));
+            Map<String, String> env = Map.of("ACTUATOR_USER", "env_user");
+
+            ActuatorCommand command = new ActuatorCommand((url, auth) -> mock(ActuatorClient.class), env::get);
+            int exitCode = new CommandLine(command).execute("--url", "http://localhost:8080", "health");
+
+            assertThat(exitCode).isEqualTo(1);
+            assertThat(err.toString()).contains("--actuator-user and --actuator-password must be provided together.");
+        } finally {
+            System.setErr(originalErr);
+        }
+    }
+
+    @Test
+    @DisplayName("actuator command fails when only ACTUATOR_PASSWORD is provided in environment")
+    void shouldFailWhenOnlyActuatorPasswordProvidedInEnvironment() {
+        ByteArrayOutputStream err = new ByteArrayOutputStream();
+        PrintStream originalErr = System.err;
+        try {
+            System.setErr(new PrintStream(err));
+            Map<String, String> env = Map.of("ACTUATOR_PASSWORD", "env_pass");
+
+            ActuatorCommand command = new ActuatorCommand((url, auth) -> mock(ActuatorClient.class), env::get);
+            int exitCode = new CommandLine(command).execute("--url", "http://localhost:8080", "health");
+
+            assertThat(exitCode).isEqualTo(1);
+            assertThat(err.toString()).contains("--actuator-user and --actuator-password must be provided together.");
+        } finally {
+            System.setErr(originalErr);
+        }
+    }
+
+    @Test
+    @DisplayName("actuator command uses Bearer auth and ignores CLI basic auth when both are passed on CLI")
+    void shouldPreferCliTokenWhenBothTokenAndBasicAuthPassedOnCli() {
+        ActuatorClient mockClient = mock(ActuatorClient.class);
+        when(mockClient.getHealth()).thenReturn("{\"status\":\"UP\"}");
+
+        Map<String, String> env = Map.of(
+            "ACTUATOR_TOKEN", "env_token",
+            "ACTUATOR_USER", "env_user",
+            "ACTUATOR_PASSWORD", "env_pass"
+        );
+        AtomicReference<ActuatorAuth> capturedAuth = new AtomicReference<>();
+        ActuatorCommand command = new ActuatorCommand((url, auth) -> {
+            capturedAuth.set(auth);
+            return mockClient;
+        }, env::get);
+
+        int exitCode = new CommandLine(command).execute(
+            "--url", "http://localhost:8080",
+            "--token", "cli_token",
+            "--user", "cli_user",
+            "--password", "cli_pass",
+            "health"
+        );
+
+        assertThat(exitCode).isZero();
+        assertThat(capturedAuth.get()).isNotNull();
+        assertThat(capturedAuth.get().bearerToken()).isEqualTo("cli_token");
+        assertThat(capturedAuth.get().user()).isNull();
+        assertThat(capturedAuth.get().password()).isNull();
     }
 }
