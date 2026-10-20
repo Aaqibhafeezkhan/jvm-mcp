@@ -90,18 +90,48 @@ class JvmAttachServiceTest {
         @Test
         @DisplayName("should reject cross-user attachment when target process user differs from current user")
         void shouldRejectCrossUserAttachmentWhenTargetUserDiffers() {
-            java.util.Optional<ProcessHandle> otherUserProcess = ProcessHandle.allProcesses()
-                .filter(p -> p.info().user().isPresent() && !p.info().user().equals(ProcessHandle.current().info().user()))
-                .findFirst();
+            ProcessHandle targetProcess = mock(ProcessHandle.class);
+            ProcessHandle.Info targetInfo = mock(ProcessHandle.Info.class);
+            org.mockito.Mockito.when(targetProcess.isAlive()).thenReturn(true);
+            org.mockito.Mockito.when(targetProcess.info()).thenReturn(targetInfo);
+            org.mockito.Mockito.when(targetInfo.user()).thenReturn(java.util.Optional.of("other-user"));
 
-            if (otherUserProcess.isPresent()) {
-                String targetPid = String.valueOf(otherUserProcess.get().pid());
-                AttachResult result = attachService.attach(targetPid);
+            ProcessHandle currentProcess = mock(ProcessHandle.class);
+            ProcessHandle.Info currentInfo = mock(ProcessHandle.Info.class);
+            org.mockito.Mockito.when(currentProcess.pid()).thenReturn(1000L);
+            org.mockito.Mockito.when(currentProcess.info()).thenReturn(currentInfo);
+            org.mockito.Mockito.when(currentInfo.user()).thenReturn(java.util.Optional.of("current-user"));
 
-                assertThat(result.isSuccessful()).isFalse();
-                assertThat(result.status()).isEqualTo(AttachStatus.PERMISSION_DENIED);
-                assertThat(result.message()).contains("Cross-user attachment is prohibited");
-            }
+            JvmAttachService service = new JvmAttachService(
+                pid -> pid == 99999L ? java.util.Optional.of(targetProcess) : java.util.Optional.empty(),
+                () -> currentProcess
+            );
+
+            AttachResult result = service.attach("99999");
+
+            assertThat(result.isSuccessful()).isFalse();
+            assertThat(result.status()).isEqualTo(AttachStatus.PERMISSION_DENIED);
+            assertThat(result.message()).contains("Target JVM process is owned by a different user (other-user). Cross-user attachment is prohibited.");
+        }
+
+        @Test
+        @DisplayName("should return PROCESS_NOT_FOUND when target process is not alive")
+        void shouldReturnProcessNotFoundWhenTargetProcessIsNotAlive() {
+            ProcessHandle deadProcess = mock(ProcessHandle.class);
+            org.mockito.Mockito.when(deadProcess.isAlive()).thenReturn(false);
+
+            ProcessHandle currentProcess = mock(ProcessHandle.class);
+            org.mockito.Mockito.when(currentProcess.pid()).thenReturn(1000L);
+
+            JvmAttachService service = new JvmAttachService(
+                pid -> pid == 99999L ? java.util.Optional.of(deadProcess) : java.util.Optional.empty(),
+                () -> currentProcess
+            );
+
+            AttachResult result = service.attach("99999");
+
+            assertThat(result.isSuccessful()).isFalse();
+            assertThat(result.status()).isEqualTo(AttachStatus.PROCESS_NOT_FOUND);
         }
 
         @Test

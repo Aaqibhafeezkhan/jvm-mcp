@@ -11,6 +11,9 @@ import java.lang.System.Logger;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
+import java.util.function.Function;
+import java.util.function.Supplier;
 
 /**
  * Core service managing JVM discovery and connection lifecycle using the JDK Attach API.
@@ -18,6 +21,20 @@ import java.util.Objects;
 public class JvmAttachService {
 
     private static final Logger LOGGER = System.getLogger(JvmAttachService.class.getName());
+
+    private final Function<Long, Optional<ProcessHandle>> processLookup;
+    private final Supplier<ProcessHandle> currentProcessSupplier;
+
+    public JvmAttachService() {
+        this(ProcessHandle::of, ProcessHandle::current);
+    }
+
+    JvmAttachService(
+            Function<Long, Optional<ProcessHandle>> processLookup,
+            Supplier<ProcessHandle> currentProcessSupplier) {
+        this.processLookup = Objects.requireNonNull(processLookup, "processLookup must not be null");
+        this.currentProcessSupplier = Objects.requireNonNull(currentProcessSupplier, "currentProcessSupplier must not be null");
+    }
 
     public List<JvmProcess> listJvms() {
         long start = System.nanoTime();
@@ -37,9 +54,9 @@ public class JvmAttachService {
             String mainClass = extractMainClass(displayName);
             Framework framework = FrameworkDetector.detect(displayName, mainClass);
 
-            long currentPid = ProcessHandle.current().pid();
+            long currentPid = currentProcessSupplier.get().pid();
             boolean isSelf = (pid == currentPid);
-            java.util.Optional<ProcessHandle> processHandle = ProcessHandle.of(pid);
+            Optional<ProcessHandle> processHandle = processLookup.apply(pid);
             boolean isAttachable = processHandle.isPresent() && (isSelf || processHandle.get().isAlive());
 
             result.add(new JvmProcess(
@@ -74,19 +91,19 @@ public class JvmAttachService {
             return AttachResult.error(pid, "PID must be a positive number.");
         }
 
-        if (requestedPid == ProcessHandle.current().pid()) {
+        if (requestedPid == currentProcessSupplier.get().pid()) {
             // Self-attachment is blocked by default on modern JDKs (jdk.attach.allowAttachSelf=false),
             // so self-inspection must not go through the Attach API.
             return AttachResult.self(pid);
         }
 
-        java.util.Optional<ProcessHandle> processHandle = ProcessHandle.of(requestedPid);
+        Optional<ProcessHandle> processHandle = processLookup.apply(requestedPid);
         if (processHandle.isPresent()) {
             if (!processHandle.get().isAlive()) {
                 return AttachResult.processNotFound(pid);
             }
-            java.util.Optional<String> currentUser = ProcessHandle.current().info().user();
-            java.util.Optional<String> targetUser = processHandle.get().info().user();
+            Optional<String> currentUser = currentProcessSupplier.get().info().user();
+            Optional<String> targetUser = processHandle.get().info().user();
             if (isCrossUser(currentUser, targetUser)) {
                 String targetUserName = targetUser.orElse("unknown");
                 return AttachResult.permissionDenied(pid, "Target JVM process is owned by a different user (" + targetUserName + "). Cross-user attachment is prohibited.");
