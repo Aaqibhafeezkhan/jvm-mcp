@@ -99,13 +99,12 @@ public final class SimpleJson {
             }
             return sb.append("]").toString();
         }
-        if (obj instanceof Object[]) {
+        if (obj.getClass().isArray()) {
             StringBuilder sb = new StringBuilder("[");
-            boolean first = true;
-            for (Object item : (Object[]) obj) {
-                if (!first) sb.append(",");
-                sb.append(toJson(item, depth + 1));
-                first = false;
+            int length = java.lang.reflect.Array.getLength(obj);
+            for (int i = 0; i < length; i++) {
+                if (i > 0) sb.append(",");
+                sb.append(toJson(java.lang.reflect.Array.get(obj, i), depth + 1));
             }
             return sb.append("]").toString();
         }
