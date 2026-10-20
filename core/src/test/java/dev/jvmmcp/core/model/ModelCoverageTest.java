@@ -82,11 +82,48 @@ class ModelCoverageTest {
 
         MemoryUsage undefinedMax = new MemoryUsage(100, 25 * 1024 * 1024, 50 * 1024 * 1024, -1);
         MemoryUsageInfo undefinedInfo = MemoryUsageInfo.from(undefinedMax);
-        assertThat(undefinedInfo.usedPercent()).isEqualTo(50.0);
+        assertThat(undefinedInfo.usedPercent()).isEqualTo(-1.0);
 
         MemoryUsage zeroMaxAndCommitted = new MemoryUsage(0, 0, 0, 0);
         MemoryUsageInfo zeroInfo = MemoryUsageInfo.from(zeroMaxAndCommitted);
         assertThat(zeroInfo.usedPercent()).isZero();
+    }
+
+    @Test
+    @DisplayName("MemoryUsageInfo reports negative max as unknown sentinel and keeps max=0 as a real bound")
+    void shouldReportUnknownSentinelOnlyForNegativeMax() {
+        long mb = 1024L * 1024L;
+
+        // JMX reports no upper bound as max == -1 (e.g. non-heap / Metaspace): unknown, not committed.
+        MemoryUsageInfo unknownMax = MemoryUsageInfo.from(new MemoryUsage(mb, 25 * mb, 50 * mb, -1));
+        assertThat(unknownMax.maxBytes()).isEqualTo(-1L);
+        assertThat(unknownMax.maxMb()).isEqualTo(-1.0);
+        assertThat(unknownMax.usedPercent()).isEqualTo(-1.0);
+        assertThat(unknownMax.committedBytes()).isEqualTo(50 * mb);
+        assertThat(unknownMax.usedMb()).isEqualTo(25.0);
+
+        // Exact bounded positive max keeps legacy semantics: ratio and quota are taken from max, not committed.
+        MemoryUsageInfo boundedMax = MemoryUsageInfo.from(new MemoryUsage(0, 20 * mb, 50 * mb, 100 * mb));
+        assertThat(boundedMax.maxBytes()).isEqualTo(100 * mb);
+        assertThat(boundedMax.maxMb()).isEqualTo(100.0);
+        assertThat(boundedMax.usedPercent()).isEqualTo(20.0);
+        assertThat(boundedMax.usedMb()).isEqualTo(20.0);
+
+        // Null input stays all zeros.
+        MemoryUsageInfo nullInfo = MemoryUsageInfo.from(null);
+        assertThat(nullInfo.initBytes()).isZero();
+        assertThat(nullInfo.usedBytes()).isZero();
+        assertThat(nullInfo.committedBytes()).isZero();
+        assertThat(nullInfo.maxBytes()).isZero();
+        assertThat(nullInfo.usedPercent()).isZero();
+        assertThat(nullInfo.usedMb()).isZero();
+        assertThat(nullInfo.maxMb()).isZero();
+
+        // max == 0 is a valid JMX bound (used/committed are 0), so it must never become the unknown sentinel.
+        MemoryUsageInfo zeroMax = MemoryUsageInfo.from(new MemoryUsage(0, 0, 0, 0));
+        assertThat(zeroMax.maxBytes()).isZero();
+        assertThat(zeroMax.maxMb()).isZero();
+        assertThat(zeroMax.usedPercent()).isZero();
     }
 
     @Test

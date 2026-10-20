@@ -5,9 +5,17 @@ import com.sun.tools.attach.VirtualMachineDescriptor;
 import com.sun.tools.attach.spi.AttachProvider;
 import dev.jvmmcp.core.attach.AttachResult;
 import dev.jvmmcp.core.attach.JvmAttachService;
+import dev.jvmmcp.core.jmx.MemoryMXBeanClient;
+import dev.jvmmcp.core.model.HeapSummary;
+import dev.jvmmcp.core.model.MemoryPoolInfo;
+import dev.jvmmcp.core.model.MemoryPressure;
+import dev.jvmmcp.core.model.MemoryPressureLevel;
+import dev.jvmmcp.core.model.MemoryUsageInfo;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import picocli.CommandLine;
@@ -16,11 +24,14 @@ import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.io.PrintStream;
+import java.lang.management.MemoryUsage;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Properties;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.Mockito.mockConstruction;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -166,6 +177,82 @@ class MemoryCommandTest {
         }
     }
 
+    @ParameterizedTest(name = "unbounded heap: {0}")
+    @ValueSource(booleans = {false, true})
+    @DisplayName("memory command should label unbounded quotas instead of printing a committed max")
+    void shouldLabelUnboundedPoolsWithoutFakeCommittedQuota(boolean unboundedHeap) throws Exception {
+        long targetPid = 100L;
+        long mb = 1024L * 1024L;
+        when(mockAttachService.attach(String.valueOf(targetPid))).thenReturn(AttachResult.success(String.valueOf(targetPid), null));
+
+        MemoryUsageInfo heap = MemoryUsageInfo.from(new MemoryUsage(0, 512 * mb, 1024 * mb, unboundedHeap ? -1 : 2048 * mb));
+        MemoryUsageInfo nonHeap = MemoryUsageInfo.from(new MemoryUsage(0, 64 * mb, 256 * mb, -1));
+        MemoryUsageInfo eden = MemoryUsageInfo.from(new MemoryUsage(0, 256 * mb, 512 * mb, 2048 * mb));
+        MemoryUsageInfo metaspace = MemoryUsageInfo.from(new MemoryUsage(0, 48 * mb, 128 * mb, -1));
+        MemoryUsageInfo zeroBoundPool = MemoryUsageInfo.from(new MemoryUsage(0, 0, 0, 0));
+        HeapSummary summary = new HeapSummary(
+            targetPid,
+            heap,
+            nonHeap,
+            List.of(
+                new MemoryPoolInfo("G1 Eden Space", "HEAP", eden, eden),
+                new MemoryPoolInfo("Metaspace", "NON_HEAP", metaspace, metaspace),
+                new MemoryPoolInfo("Code Cache", "NON_HEAP", zeroBoundPool, zeroBoundPool)
+            ),
+            List.of(),
+            new MemoryPressure(MemoryPressureLevel.NORMAL, 0.25, 0L, 0L, "Heap looks healthy")
+        );
+
+        MemoryCommand command = new MemoryCommand(mockAttachService);
+        command.pid = targetPid;
+
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        PrintStream originalOut = System.out;
+        try (var clients = mockConstruction(MemoryMXBeanClient.class,
+                (client, context) -> when(client.getHeapSummary(anyLong())).thenReturn(summary))) {
+            System.setOut(new PrintStream(out));
+            Integer exitCode = command.call();
+
+            assertThat(exitCode).isZero();
+            assertThat(clients.constructed()).hasSize(1);
+            String output = out.toString();
+
+            // Unbounded non-heap memory: explicit unknown label, never the committed value used as a quota.
+            String nonHeapLine = lineContaining(output, "Non-Heap Usage");
+            assertThat(nonHeapLine).containsIgnoringCase("unbounded");
+            assertThat(nonHeapLine).doesNotContain("256.00");
+
+            // Unbounded pool (Metaspace): same contract in the MAX (MB) column.
+            String metaspaceLine = lineContaining(output, "Metaspace");
+            assertThat(metaspaceLine).containsIgnoringCase("unbounded");
+            assertThat(metaspaceLine).doesNotContain("128.00");
+
+            // Bounded heap and bounded pool keep the numeric rendering unchanged.
+            String heapLine = lineContaining(output, "Heap Usage");
+            if (unboundedHeap) {
+                assertThat(heapLine).contains("512.00 MB / unbounded (N/A used)");
+            } else {
+                assertThat(heapLine).contains("512.00 MB / 2048.00 MB (25.0% used)");
+                assertThat(heapLine).doesNotContain("unbounded");
+            }
+
+            String edenLine = lineContaining(output, "G1 Eden Space");
+            assertThat(edenLine).contains("256.00").contains("2048.00");
+            assertThat(edenLine).doesNotContain("unbounded");
+
+            // An exact zero max is a real bound, not an unknown one.
+            String codeCacheLine = lineContaining(output, "Code Cache");
+            assertThat(codeCacheLine).contains("0.00");
+            assertThat(codeCacheLine).doesNotContain("unbounded");
+            assertThat(codeCacheLine).doesNotContain("N/A");
+
+            // No raw sentinel may leak into any column.
+            assertThat(output).doesNotContain("-1.00");
+        } finally {
+            System.setOut(originalOut);
+        }
+    }
+
     @Test
     @DisplayName("memory command with --histogram and VM attached should print histogram table")
     void shouldPrintHeapHistogramWhenVmPresent() {
@@ -281,5 +368,13 @@ class MemoryCommandTest {
     void shouldInitializeWithDefaultConstructor() {
         MemoryCommand command = new MemoryCommand();
         assertThat(command).isNotNull();
+    }
+
+    private static String lineContaining(String output, String needle) {
+        return output.lines()
+            .filter(line -> line.contains(needle))
+            .findFirst()
+            .orElseThrow(() -> new AssertionError(
+                "No output line containing '" + needle + "' in:\n" + output));
     }
 }

@@ -9,6 +9,7 @@ import dev.jvmmcp.core.model.ClassHistogramItem;
 import dev.jvmmcp.core.model.HeapHistogram;
 import dev.jvmmcp.core.model.HeapSummary;
 import dev.jvmmcp.core.model.MemoryPoolInfo;
+import dev.jvmmcp.core.model.MemoryUsageInfo;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
 import picocli.CommandLine.Parameters;
@@ -22,6 +23,9 @@ import java.util.concurrent.Callable;
     mixinStandardHelpOptions = true
 )
 public class MemoryCommand implements Callable<Integer> {
+
+    private static final String UNBOUNDED_LABEL = "unbounded";
+    private static final String UNKNOWN_PERCENT_LABEL = "N/A";
 
     @Parameters(index = "0", description = "Target JVM Process ID (PID)")
     long pid;
@@ -68,10 +72,10 @@ public class MemoryCommand implements Callable<Integer> {
                 System.out.printf(" JVM MEMORY DIAGNOSTICS FOR PID %d%n", pid);
                 System.out.println("=".repeat(80));
 
-                System.out.printf("Heap Usage     : %.2f MB / %.2f MB (%.1f%% used)%n", 
-                    summary.heap().usedMb(), summary.heap().maxMb(), summary.heap().usedPercent());
-                System.out.printf("Non-Heap Usage : %.2f MB / %.2f MB%n", 
-                    summary.nonHeap().usedMb(), summary.nonHeap().maxMb());
+                System.out.printf("Heap Usage     : %.2f MB / %s (%s used)%n",
+                    summary.heap().usedMb(), quotaLabel(summary.heap()), usedPercentLabel(summary.heap()));
+                System.out.printf("Non-Heap Usage : %.2f MB / %s%n",
+                    summary.nonHeap().usedMb(), quotaLabel(summary.nonHeap()));
                 System.out.printf("Pressure Status: %s (Ratio: %.1f%%)%n", 
                     summary.pressure().level(), summary.pressure().heapUsageRatio() * 100.0);
                 System.out.printf("Recommendation : %s%n", summary.pressure().recommendation());
@@ -82,11 +86,11 @@ public class MemoryCommand implements Callable<Integer> {
                 System.out.println("-".repeat(80));
 
                 for (MemoryPoolInfo pool : summary.pools()) {
-                    System.out.printf("%-30s %-12s %-16.2f %.2f%n",
+                    System.out.printf("%-30s %-12s %-16.2f %s%n",
                         pool.name(),
                         pool.type(),
                         pool.usage().usedMb(),
-                        pool.usage().maxMb()
+                        maxMbLabel(pool.usage())
                     );
                 }
 
@@ -131,5 +135,22 @@ public class MemoryCommand implements Callable<Integer> {
             System.err.println("[jvm-mcp] Error querying memory metrics: " + e.getMessage());
             return 1;
         }
+    }
+
+    /**
+     * JMX reports "no upper bound" as a negative max. Render that as text instead of printing
+     * the {@code -1.0} sentinel (or passing committed bytes off as the quota); a max of zero is
+     * a real bound and stays numeric.
+     */
+    private static String quotaLabel(MemoryUsageInfo usage) {
+        return usage.maxBytes() < 0 ? UNBOUNDED_LABEL : String.format("%.2f MB", usage.maxMb());
+    }
+
+    private static String maxMbLabel(MemoryUsageInfo usage) {
+        return usage.maxBytes() < 0 ? UNBOUNDED_LABEL : String.format("%.2f", usage.maxMb());
+    }
+
+    private static String usedPercentLabel(MemoryUsageInfo usage) {
+        return usage.maxBytes() < 0 ? UNKNOWN_PERCENT_LABEL : String.format("%.1f%%", usage.usedPercent());
     }
 }
