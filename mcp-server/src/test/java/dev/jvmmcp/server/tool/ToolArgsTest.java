@@ -168,4 +168,70 @@ class ToolArgsTest {
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessage("Argument 'url' cannot be blank");
     }
+
+    @Test
+    @DisplayName("getLongArg returns zero for null optional arguments")
+    void testGetLongArgNullOptionalValue() {
+        Map<String, Object> args = new HashMap<>();
+        args.put("limit", null);
+
+        assertThat(ToolArgs.getLongArg(args, "limit", false)).isEqualTo(0L);
+    }
+
+    @Test
+    @DisplayName("getLongArg rejects null required arguments")
+    void testGetLongArgNullRequiredValue() {
+        Map<String, Object> args = new HashMap<>();
+        args.put("limit", null);
+
+        assertThatThrownBy(() -> ToolArgs.getLongArg(args, "limit", true))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("must be a number");
+    }
+
+    @Test
+    @DisplayName("getIntArg returns default for null values")
+    void testGetIntArgNullValue() {
+        Map<String, Object> args = new HashMap<>();
+        args.put("limit", null);
+
+        assertThat(ToolArgs.getIntArg(args, "limit", 100, 1, 1000))
+            .isEqualTo(100);
+    }
+
+    @Test
+    @DisplayName("getBooleanArg handles missing and null values")
+    void testGetBooleanArgDefaultValue() {
+        Map<String, Object> args = new HashMap<>();
+        args.put("enabled", null);
+
+        assertThat(ToolArgs.getBooleanArg(null, "enabled", true)).isTrue();
+        assertThat(ToolArgs.getBooleanArg(Map.of(), "enabled", false)).isFalse();
+        assertThat(ToolArgs.getBooleanArg(args, "enabled", true)).isTrue();
+    }
+
+    @Test
+    @DisplayName("getBooleanArg supports booleans and strings")
+    void testGetBooleanArgValues() {
+        assertThat(ToolArgs.getBooleanArg(
+            Map.of("enabled", true), "enabled", false)).isTrue();
+
+        assertThat(ToolArgs.getBooleanArg(
+            Map.of("enabled", false), "enabled", true)).isFalse();
+
+        assertThat(ToolArgs.getBooleanArg(
+            Map.of("enabled", " true "), "enabled", false)).isTrue();
+
+        assertThat(ToolArgs.getBooleanArg(
+            Map.of("enabled", "false"), "enabled", true)).isFalse();
+    }
+
+    @Test
+    @DisplayName("getBooleanArg rejects unsupported value types")
+    void testGetBooleanArgInvalidType() {
+        assertThatThrownBy(() ->
+            ToolArgs.getBooleanArg(Map.of("enabled", 1), "enabled", false))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("Argument 'enabled' must be a boolean");
+    }
 }

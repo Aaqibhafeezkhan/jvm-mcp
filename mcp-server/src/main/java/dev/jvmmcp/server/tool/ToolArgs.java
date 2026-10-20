@@ -43,7 +43,7 @@ public final class ToolArgs {
     }
 
     public static long getLongArg(Map<String, Object> args, String key, boolean required) {
-        if (args == null || !args.containsKey(key)) {
+        if (args == null || !args.containsKey(key) || (!required && args.get(key) == null)) {
             if (required) {
                 throw new IllegalArgumentException("Missing required argument: " + key);
             }
@@ -65,7 +65,7 @@ public final class ToolArgs {
     }
 
     public static int getIntArg(Map<String, Object> args, String key, int defaultValue, int min, int max) {
-        if (args == null || !args.containsKey(key)) {
+        if (args == null || !args.containsKey(key) || args.get(key) == null) {
             return defaultValue;
         }
         Object val = args.get(key);
@@ -77,5 +77,19 @@ public final class ToolArgs {
             return min;
         }
         return Math.min(parsed, max);
+    }
+
+    public static boolean getBooleanArg(Map<String, Object> args, String key, boolean defaultValue) {
+        if (args == null || !args.containsKey(key) || args.get(key) == null) {
+            return defaultValue;
+        }
+        Object val = args.get(key);
+        if (val instanceof Boolean b) {
+            return b;
+        }
+        if (val instanceof String s) {
+            return Boolean.parseBoolean(s.trim());
+        }
+        throw new IllegalArgumentException("Argument '" + key + "' must be a boolean");
     }
 }
