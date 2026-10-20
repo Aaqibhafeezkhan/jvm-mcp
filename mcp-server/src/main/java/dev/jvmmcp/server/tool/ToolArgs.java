@@ -23,10 +23,23 @@ public final class ToolArgs {
             return null;
         }
         Object val = args.get(key);
-        if (val != null && !(val instanceof String)) {
+
+        if (val == null) {
+            if (required) {
+                throw new IllegalArgumentException("Missing required argument: " + key);
+            }
+            return null;
+        }
+
+        if (!(val instanceof String s)) {
             throw new IllegalArgumentException("Argument '" + key + "' must be a string");
         }
-        return (String) val;
+
+        if (required && s.isBlank()) {
+            throw new IllegalArgumentException("Argument '" + key + "' cannot be blank");
+        }
+
+        return s;
     }
 
     public static long getLongArg(Map<String, Object> args, String key, boolean required) {
