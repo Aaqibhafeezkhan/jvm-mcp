@@ -106,6 +106,18 @@ class PostgresToolHandlerTest {
         verify(mockReader).findMissingIndexes("public", 1024L * 1024);
     }
 
+    @Test
+    @DisplayName("find_missing_indexes handles null arguments")
+    void testFindMissingIndexesWithNullArguments() {
+        PostgresToolHandler handler = new PostgresToolHandler((url, user, pass) -> mockReader);
+
+        assertThatThrownBy(() -> handler.execute("find_missing_indexes", null))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("Missing required argument: url");
+
+        verifyNoInteractions(mockReader);
+    }
+
     @ParameterizedTest
     @MethodSource("validMinimumTableSizes")
     void forwardsExplicitMinimumWithTheRequestedSchema(Number megabytes) throws Exception {

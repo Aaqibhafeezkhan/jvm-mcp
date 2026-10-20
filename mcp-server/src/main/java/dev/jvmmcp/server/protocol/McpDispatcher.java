@@ -125,7 +125,7 @@ public class McpDispatcher {
             Map<String, Object> params = ToolArgs.asMap(req.get("params"));
             if (params != null && params.get("name") instanceof String toolName) {
                 Map<String, Object> args = ToolArgs.asMap(params.get("arguments"));
-                return toolRegistry.execute(toolName, args);
+                return toolRegistry.execute(toolName, args != null ? args : Map.of());
             } else {
                 return Map.of("error", Map.of("code", -32602, "message", "Invalid params"));
             }

@@ -100,7 +100,7 @@ public class PostgresToolHandler implements ToolHandler {
                 String rawSchema = ToolArgs.getStringArg(args, "schema", false);
                 String schema = PostgresSchemaReader.validateSchemaName(rawSchema);
                 long minTableSizeBytes = PostgresSchemaReader.DEFAULT_MIN_TABLE_SIZE_BYTES;
-                if (args.containsKey("minTableSizeMb")) {
+                if (args != null && args.containsKey("minTableSizeMb")) {
                     long minTableSizeMb = ToolArgs.getLongArg(args, "minTableSizeMb", true);
                     boolean wholeNumber;
                     try {
