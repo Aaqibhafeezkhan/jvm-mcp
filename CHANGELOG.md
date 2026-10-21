@@ -34,6 +34,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Updated documentation to emphasize "Zero runtime framework overhead with self-contained packaging and zero target-application modifications" over generic "zero-dependency" claims.
 
 ### Fixed
+- **Parseable Deadlock Report in `get_thread_diagnostics`**: the second content block is now the deadlock report's JSON alone. It used to start with `Deadlock Report: `, so a client parsing each block as JSON failed on it.
 - **Thread Summary with No Thread IDs**: `ThreadMXBeanClient.getThreadSummary` treats a `null` from `getAllThreadIds()` as no threads and returns zero state counts instead of throwing `NullPointerException`.
 - **Heap Usage Ratio in `MemoryPressure`**: `heapUsageRatio` now holds the heap's own used/max ratio. It used to carry the larger of the heap and Metaspace/Class Space ratios, so a full Metaspace over a near-idle heap read as 96% heap usage. The pressure level and recommendation still follow the fuller of the two.
 - **Main Class of Modular Launches**: `jvm-mcp list` and `list_jvms` now show `module/Main` for a JVM started with `-m`, `--module` or `--module=`, instead of the flag itself (`-m`).
