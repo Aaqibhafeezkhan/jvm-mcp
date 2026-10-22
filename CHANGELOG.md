@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-10-21
+
 ### Added
 - **MCP Server Modular Architecture**:
   - Deconstructed `ServeCommand.java` (from a 503-line god class down to 70 lines) into clean, single-responsibility modules:
@@ -23,6 +25,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Added automated SHA-256 checksum injection in `release.yml` that synchronizes `homebrew/jvm-mcp.rb` from `checksums.txt` and publishes the updated formula as an atomic release asset.
 - **Platform Compatibility Matrix**:
   - Documented explicit operating system, JDK vendor, container, and security permission compatibility in `README.md`.
+- **Concurrency & Thread Safety**:
+  - Dispatched incoming MCP JSON-RPC tool requests to Java 21 Virtual Threads (`Executors.newVirtualThreadPerTaskExecutor()`) to eliminate Head-of-Line blocking on ping heartbeats during long-running tool executions.
+  - Added synchronized monitor locking (`synchronized (responseLock)`) for all outbound stdio JSON-RPC responses to prevent frame interleaving.
+- **Dynamic Versioning**:
+  - Implemented runtime version resolution (`Package.getImplementationVersion()` with `/version.properties` and fallback) and Picocli `IVersionProvider` for `jvm-mcp --version`.
+- **Homebrew Formula**:
+  - Upgraded `homebrew/jvm-mcp.rb` with standard multi-architecture blocks (`on_macos`, `on_linux`, `aarch64`, `amd64`) and `libexec` symlink layout.
 
 ### Changed
 - **Harmonized Quality Gates & Test Suite**:
@@ -30,6 +39,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Raised `mcp-server` JaCoCo branch coverage threshold from 55% to **65%** (achieving 82% branch coverage and 93% instruction coverage).
   - Expanded `mcp-server` test suite from 80 to **165 tests** with 0 failures and 0 errors.
   - Managed `maven-jar-plugin` version (3.4.2) in root POM plugin management, eliminating Maven model warnings.
+- **Build Architecture & Hygiene**:
+  - Formally retired obsolete `native` module from the Maven reactor following the architectural transition to `jlink`/`jpackage`.
+  - Captured unhandled runtime exceptions with standard JSON-RPC `-32603` (Internal Error) responses instead of unhandled thread terminations.
+  - Bound SLF4J logging strictly to `System.err` via `simplelogger.properties` in `mcp-server` to keep `stdout` pure for JSON-RPC transport framing.
+  - Centralized test dependencies in root POM using `testcontainers-bom` to prevent fractured partial updates.
 - **Accurate Project Positioning**:
   - Updated documentation to emphasize "Zero runtime framework overhead with self-contained packaging and zero target-application modifications" over generic "zero-dependency" claims.
 
@@ -60,32 +74,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Defensive JSON Parsing in `SimpleJson`**: Malformed numbers (`-`, `1.`, `1e`, `-1.5e-`) and truncated or non-hexadecimal `\u` escapes now fail with a positioned `IllegalArgumentException` instead of leaking `NumberFormatException`; non-ASCII digits are no longer routed into the number parser.
 - **Unbounded JVM Memory Reporting**: `MemoryUsageInfo` now reports `maxMb` and `usedPercent` as `-1` when JMX exposes no upper bound (`max == -1`, e.g. non-heap memory or an unbounded pool such as Metaspace) instead of substituting committed bytes as the limit; `jvm-mcp memory` renders those quotas as `unbounded` (with `N/A` percent where a ratio is shown). A `max` of `0` remains a real numeric bound and existing bounded output is unchanged.
 
-## [1.1.0] - 2026-10-11
-
-### Added
-- **Concurrency**: Dispatched incoming MCP JSON-RPC tool requests to Java 21 Virtual Threads (`Executors.newVirtualThreadPerTaskExecutor()`) to eliminate Head-of-Line blocking on ping heartbeats during long-running tool executions.
-- **Thread Safety**: Added synchronized monitor locking (`synchronized (responseLock)`) for all outbound stdio JSON-RPC responses to prevent frame interleaving.
-- **Diagnostics CLI**: Implemented `jvm-mcp doctor` subcommand (`DoctorCommand`) validating host OS readiness, Java 21 runtime version, and Attach API user matching / `ptrace_scope` permissions.
-- **Dynamic Versioning**: Implemented runtime version resolution (`Package.getImplementationVersion()` with `/version.properties` and `1.1.0-SNAPSHOT` fallback) and Picocli `IVersionProvider` for `jvm-mcp --version`.
-- **Release Pipeline**: Implemented two-stage collector pipeline (`build-matrix` + `publish-release`) in GitHub Actions generating SHA-256 checksums (`checksums.txt` and `.sha256`) and atomic GitHub Releases.
-- **Homebrew Formula**: Upgraded `homebrew/jvm-mcp.rb` with standard multi-architecture blocks (`on_macos`, `on_linux`, `aarch64`, `amd64`) and `libexec` symlink layout.
-- **Dependency Management**: Centralized test dependencies in root POM using `testcontainers-bom` to prevent fractured partial updates by automated tools.
-
-### Changed
-- **Build Architecture**: Formally retired obsolete `native` module from the Maven reactor following the architectural transition to `jlink`/`jpackage`.
-- **MCP Server**: Captured unhandled runtime exceptions with standard JSON-RPC `-32603` (Internal Error) responses instead of unhandled thread terminations.
-- **Logging Hygiene**: Bound SLF4J logging strictly to `System.err` via `simplelogger.properties` in `mcp-server` to keep `stdout` pure for JSON-RPC transport framing.
-- **Distribution Scripts**: Hardened root `install.sh` with cryptographic SHA-256 pre-extraction verification, multi-architecture detection, and automatic cleanup trap.
-- **Shade Plugin**: Upgraded `maven-shade-plugin` to `3.6.2`.
-
 ### Removed
 - **Redundant Scripts**: Removed obsolete `scripts/install.sh` and duplicate `.github/homebrew/jvm-mcp.rb`.
-
-### Fixed
-- **CLI Exit Codes**: Ensured `BeansCommand` returns exit code `1` when Actuator endpoints are unreachable instead of silently exiting with code `0`.
-- **CLI Usability**: Enabled `mixinStandardHelpOptions = true` across `DoctorCommand`, `PgCommand`, and `ActuatorCommand` so `--help` exits cleanly with code `0`.
-- **Lifecycle Leaks**: Added guaranteed `try-finally` detachment for `VirtualMachine` instances if JMX connection initialization throws an exception in `ServeCommand`.
-- **Testing Hermeticity**: Replaced external Docker Testcontainers in `HikariMXBeanClientTest` with in-memory H2 database instances for 100% hermetic execution across Windows, macOS, and Linux runners.
 
 ### Security
 - **PostgreSQL JDBC SSRF & RCE Hardening**: Implemented canonical URI validation in `PostgresSchemaReader`:

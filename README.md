@@ -114,7 +114,7 @@ cd jvm-mcp
 ./mvnw clean package -DskipTests
 
 # Run the packaged fat JAR directly:
-java -jar mcp-server/target/jvm-mcp-server-1.1.0-SNAPSHOT.jar --version
+java -jar mcp-server/target/jvm-mcp-server-1.1.0.jar --version
 ```
 
 ---
@@ -136,7 +136,7 @@ Add `jvm-mcp` to your `claude_desktop_config.json`:
 }
 ```
 
-*(If running from the repository fat JAR directly: `"command": "java", "args": ["-jar", "/path/to/jvm-mcp-server-1.1.0-SNAPSHOT.jar", "serve"]`)*
+*(If running from the repository fat JAR directly: `"command": "java", "args": ["-jar", "/path/to/jvm-mcp-server-1.1.0.jar", "serve"]`)*
 
 ### Cursor / Windsurf
 
