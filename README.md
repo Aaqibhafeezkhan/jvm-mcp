@@ -85,6 +85,27 @@ brew tap oscarbol09/tap
 brew install jvm-mcp
 ```
 
+### Scoop (Windows)
+
+Install via the tap bucket repository:
+```powershell
+scoop bucket add oscarbol09 https://github.com/oscarbol09/homebrew-tap.git
+scoop install jvm-mcp
+```
+
+Or install directly in one step from the manifest URL:
+```powershell
+scoop install https://raw.githubusercontent.com/oscarbol09/homebrew-tap/main/bucket/jvm-mcp.json
+```
+
+### Docker / OCI Container (GHCR)
+
+For containerized workflows or remote inspection of PostgreSQL and Spring Actuator endpoints:
+
+```bash
+docker run -i --rm ghcr.io/oscarbol09/jvm-mcp:1.1.0 serve
+```
+
 ### Pre-Compiled Standalone Archives
 
 Download release packages and corresponding `.sha256` checksums from [GitHub Releases](https://github.com/oscarbol09/jvm-mcp/releases):
