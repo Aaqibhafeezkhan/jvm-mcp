@@ -245,7 +245,7 @@ jobs:
           cat artifacts/jvm-mcp.rb
 
           sed -i "s/\"version\": \".*\"/\"version\": \"${VERSION}\"/" scoop/jvm-mcp.json
-          [ -n "$WINDOWS_AMD64_SHA" ] && sed -i "s/REPLACE_WITH_WINDOWS_AMD64_SHA256/${WINDOWS_AMD64_SHA}/" scoop/jvm-mcp.json
+          [ -n "$WINDOWS_AMD64_SHA" ] && sed -i "s/\"hash\": \".*\"/\"hash\": \"${WINDOWS_AMD64_SHA}\"/" scoop/jvm-mcp.json
 
           cp scoop/jvm-mcp.json artifacts/jvm-mcp.json
           echo "Generated artifacts/jvm-mcp.json:"

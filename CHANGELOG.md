@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.1] - 2026-10-22
+
+### Added
+- **Windows PowerShell One-Line Installer (`install.ps1`)**:
+  - Direct installation via `irm .../install.ps1 | iex` with cryptographic SHA-256 integrity verification.
+  - Architecture enforcement (x86_64/AMD64).
+  - Staged atomic deployment with rollback capability on failure.
+  - Automatic `User PATH` registration.
+  - Parameterized execution support: `-Version`, `-InstallDir`, `-Uninstall`, and `-Help`.
+- **Windows & Unix Uninstallers (`uninstall.ps1`, `uninstall.sh`)**:
+  - Dedicated uninstallation scripts providing clean binary removal and environment PATH cleanup.
+- **Universal Installer Flags in `install.sh`**:
+  - Added CLI flag parsing for `--version <tag>`, `--uninstall`, `--install-dir <dir>`, `--bin-dir <dir>`, and `--help`.
+  - Added idempotent cleaning before unpacking to prevent orphaned files during in-place upgrades.
+- **Official Scoop Package Manager Manifest**:
+  - Published `bucket/jvm-mcp.json` in `oscarbol09/homebrew-tap` repository and template in `scoop/jvm-mcp.json`.
+  - Automated Scoop manifest generation and publication as a release asset in `.github/workflows/release.yml`.
+- **Multi-Architecture Container Image (GHCR)**:
+  - Multi-stage `Dockerfile` based on hardened `eclipse-temurin:21-jre-alpine` and unprivileged execution (`UID:GID 10001:10001`).
+  - GitHub Actions workflow `.github/workflows/docker.yml` building and publishing multi-arch images (`linux/amd64`, `linux/arm64`) to `ghcr.io/oscarbol09/jvm-mcp`.
+
+### Fixed
+- **Windows Console Subsystem in `jpackage`**:
+  - Added `--win-console` flag in `.github/workflows/release.yml` so that `jvm-mcp.exe` properly binds `stdin`, `stdout`, and `stderr` in PowerShell, CMD, and GUI process runners (Claude Desktop, Cursor).
+- **GitHub Actions macOS x86_64 Runner Migration**:
+  - Upgraded retired `macos-13` runner to `macos-15-intel` in `release.yml`, resolving indefinite queue stalls for Intel macOS builds.
+- **PowerShell Remote Parameter Execution**:
+  - Documented parameterized script invocation via `& ([scriptblock]::Create((irm ...)))`.
+
 ## [1.1.0] - 2026-10-21
 
 ### Added

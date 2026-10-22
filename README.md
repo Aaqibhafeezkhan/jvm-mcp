@@ -73,10 +73,16 @@ curl -fsSL https://raw.githubusercontent.com/oscarbol09/jvm-mcp/main/install.sh 
 *Options supported: `--version <v1.1.0>`, `--uninstall`, `--install-dir <dir>`, `--bin-dir <dir>`.*
 
 #### Windows (PowerShell)
+
+Quick install:
 ```powershell
 irm https://raw.githubusercontent.com/oscarbol09/jvm-mcp/main/install.ps1 | iex
 ```
-*Options supported: `-Version <1.1.0>`, `-Uninstall`, `-InstallDir <dir>`.*
+
+Custom installation with arguments (specific version or custom directory):
+```powershell
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/oscarbol09/jvm-mcp/main/install.ps1))) -Version 1.1.1 -InstallDir "$env:LOCALAPPDATA\jvm-mcp"
+```
 
 ---
 
@@ -161,11 +167,13 @@ Your system is ready to use JVM-MCP.
 
 #### Docker / OCI Container (GHCR)
 
-For containerized workflows or remote inspection of PostgreSQL and Spring Actuator endpoints:
+The official container image is optimized for remote diagnostic workflows (inspecting PostgreSQL schemas and Spring Boot Actuator endpoints over network):
 
 ```bash
-docker run -i --rm ghcr.io/oscarbol09/jvm-mcp:1.1.0 serve
+docker run -i --rm ghcr.io/oscarbol09/jvm-mcp:1.1.1 serve
 ```
+
+> **Note on Local Attach API**: The container runs under an unprivileged user (`jvmuser`, UID 10001) with a minimal JRE. Dynamic Attach API inspection of host processes from inside Docker requires host PID namespace sharing (`--pid=host`), `CAP_SYS_PTRACE`, and matching user boundaries. For local JVM introspection, pre-compiled standalone archives or native installers are recommended.
 
 #### Pre-Compiled Standalone Archives
 
@@ -196,7 +204,7 @@ cd jvm-mcp
 ./mvnw clean package -DskipTests
 
 # Run the packaged fat JAR directly:
-java -jar mcp-server/target/jvm-mcp-server-1.1.0.jar --version
+java -jar mcp-server/target/jvm-mcp-server-1.1.1.jar --version
 ```
 
 ---
@@ -218,7 +226,7 @@ Add `jvm-mcp` to your `claude_desktop_config.json`:
 }
 ```
 
-*(If running from the repository fat JAR directly: `"command": "java", "args": ["-jar", "/path/to/jvm-mcp-server-1.1.0.jar", "serve"]`)*
+*(If running from the repository fat JAR directly: `"command": "java", "args": ["-jar", "/path/to/jvm-mcp-server-1.1.1.jar", "serve"]`)*
 
 ### Cursor / Windsurf
 

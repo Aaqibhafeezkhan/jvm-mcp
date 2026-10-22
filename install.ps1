@@ -6,7 +6,7 @@
     verifies SHA-256 cryptographic integrity, unpacks into local app data,
     configures user PATH, and verifies installation.
 .PARAMETER Version
-    Specific release version to install (e.g. "1.1.0" or "v1.1.0"). Defaults to "latest".
+    Specific release version to install (e.g. "1.1.1" or "v1.1.1"). Defaults to "latest".
 .PARAMETER InstallDir
     Target directory for installation. Defaults to "$env:LOCALAPPDATA\jvm-mcp".
 .PARAMETER Uninstall
@@ -47,10 +47,10 @@ if ($Uninstall) {
     exit 0
 }
 
-# 1. Architecture check
+# 1. Architecture check (x86_64/AMD64 only)
 $arch = $env:PROCESSOR_ARCHITECTURE
-if ($arch -ne "AMD64" -and $arch -ne "ARM64") {
-    Write-Error "Unsupported processor architecture: $arch. JVM-MCP Windows distribution requires x86_64/AMD64."
+if ($arch -ne "AMD64") {
+    Write-Error "Unsupported processor architecture: '$arch'. Windows distribution currently supports x86_64/AMD64 only."
     exit 1
 }
 
@@ -85,28 +85,47 @@ try {
     }
     Write-Host "Cryptographic integrity verified." -ForegroundColor Green
 
-    Write-Host "Extracting to $InstallDir..." -ForegroundColor Cyan
-    if (Test-Path $InstallDir) {
-        Remove-Item -Recurse -Force $InstallDir
-    }
-    New-Item -ItemType Directory -Path $InstallDir -Force | Out-Null
-
+    # 3. Extract to staging directory and verify executable exists before touching existing installation
+    Write-Host "Extracting package to temporary stage..." -ForegroundColor Cyan
     $ExtractTmp = Join-Path $TmpDir "extracted"
     Expand-Archive -Path $ZipPath -DestinationPath $ExtractTmp
 
-    $extractedRoot = Join-Path $ExtractTmp "jvm-mcp"
-    if (Test-Path $extractedRoot) {
-        Copy-Item -Path "$extractedRoot\*" -Destination $InstallDir -Recurse -Force
-    } else {
-        Copy-Item -Path "$ExtractTmp\*" -Destination $InstallDir -Recurse -Force
+    $stagedRoot = Join-Path $ExtractTmp "jvm-mcp"
+    $candidateExe = if (Test-Path $stagedRoot) { Join-Path $stagedRoot $ExeName } else { Join-Path $ExtractTmp $ExeName }
+    if (-not (Test-Path $candidateExe)) {
+        throw "Executable $ExeName not found in unpacked package."
+    }
+
+    # 4. Atomic replacement of existing installation with rollback capability
+    Write-Host "Deploying to $InstallDir..." -ForegroundColor Cyan
+    $backupDir = $null
+    if (Test-Path $InstallDir) {
+        $backupDir = Join-Path ([System.IO.Path]::GetTempPath()) ("jvm-mcp-backup-" + [System.Guid]::NewGuid().ToString("N"))
+        Move-Item -Path $InstallDir -Destination $backupDir -Force
+    }
+
+    try {
+        New-Item -ItemType Directory -Path $InstallDir -Force | Out-Null
+        if (Test-Path $stagedRoot) {
+            Copy-Item -Path "$stagedRoot\*" -Destination $InstallDir -Recurse -Force
+        } else {
+            Copy-Item -Path "$ExtractTmp\*" -Destination $InstallDir -Recurse -Force
+        }
+        if ($backupDir -and (Test-Path $backupDir)) {
+            Remove-Item -Recurse -Force $backupDir -ErrorAction SilentlyContinue
+        }
+    } catch {
+        if ($backupDir -and (Test-Path $backupDir)) {
+            Write-Host "Installation failed. Restoring previous installation..." -ForegroundColor Yellow
+            if (Test-Path $InstallDir) { Remove-Item -Recurse -Force $InstallDir }
+            Move-Item -Path $backupDir -Destination $InstallDir -Force
+        }
+        throw
     }
 
     $InstalledExe = Join-Path $InstallDir $ExeName
-    if (-not (Test-Path $InstalledExe)) {
-        throw "Executable $ExeName not found in $InstallDir after extraction."
-    }
 
-    # Update User PATH
+    # 5. Update User PATH
     $userPath = [Environment]::GetEnvironmentVariable("Path", "User")
     $pathParts = if ($userPath) { $userPath -split ';' } else { @() }
     if ($pathParts -notcontains $InstallDir) {
