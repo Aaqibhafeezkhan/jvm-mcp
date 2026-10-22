@@ -4,10 +4,16 @@
 #>
 [CmdletBinding()]
 param(
-    [string]$InstallDir = "$env:LOCALAPPDATA\jvm-mcp"
+    [string]$InstallDir = "$env:LOCALAPPDATA\jvm-mcp",
+    [switch]$Help
 )
 
 $ErrorActionPreference = "Stop"
+
+if ($Help) {
+    Get-Help $MyInvocation.MyCommand.Path
+    exit 0
+}
 
 Write-Host "Uninstalling JVM-MCP..." -ForegroundColor Yellow
 if (Test-Path $InstallDir) {
