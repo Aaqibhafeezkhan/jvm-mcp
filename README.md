@@ -64,41 +64,102 @@ Distributed as a standalone multi-platform bundle with a stripped custom runtime
 
 Pre-built standalone distributions include a minimal modular JRE via `jlink` (Linux/macOS) and `jpackage` (Windows). No pre-installed JDK is required on the host system.
 
-### One-Line Universal Installer (Linux & macOS)
+### Recommended: Automated One-Line Installers
 
+#### Linux & macOS
 ```bash
 curl -fsSL https://raw.githubusercontent.com/oscarbol09/jvm-mcp/main/install.sh | bash
 ```
+*Options supported: `--version <v1.1.0>`, `--uninstall`, `--install-dir <dir>`, `--bin-dir <dir>`.*
 
-The script automatically detects your platform architecture (`linux-amd64`, `linux-aarch64`, `macos-aarch64`, `macos-amd64`), verifies the cryptographic SHA-256 checksum against the release manifest, and unpacks `jvm-mcp` into `~/.local/bin`.
-
-### Homebrew (macOS & Linux)
-
-Install directly using the formula published with each GitHub release:
-```bash
-brew install https://github.com/oscarbol09/jvm-mcp/releases/latest/download/jvm-mcp.rb
+#### Windows (PowerShell)
+```powershell
+irm https://raw.githubusercontent.com/oscarbol09/jvm-mcp/main/install.ps1 | iex
 ```
+*Options supported: `-Version <1.1.0>`, `-Uninstall`, `-InstallDir <dir>`.*
 
-Or via Homebrew tap repository:
+---
+
+### Package Managers
+
+#### Homebrew (macOS & Linux)
 ```bash
 brew tap oscarbol09/tap
 brew install jvm-mcp
 ```
+*(Or direct formula install: `brew install https://github.com/oscarbol09/jvm-mcp/releases/latest/download/jvm-mcp.rb`)*
 
-### Scoop (Windows)
-
-Install via the tap bucket repository:
+#### Scoop (Windows)
 ```powershell
 scoop bucket add oscarbol09 https://github.com/oscarbol09/homebrew-tap.git
 scoop install jvm-mcp
 ```
+*(Or single-step direct install: `scoop install https://raw.githubusercontent.com/oscarbol09/homebrew-tap/main/bucket/jvm-mcp.json`)*
 
-Or install directly in one step from the manifest URL:
-```powershell
-scoop install https://raw.githubusercontent.com/oscarbol09/homebrew-tap/main/bucket/jvm-mcp.json
+---
+
+### Verification: First Step After Installation
+
+Immediately after installation, run the diagnostic tool to verify Java HotSpot runtime compatibility, user process boundaries, and Dynamic Attach API capabilities:
+
+```bash
+jvm-mcp doctor
 ```
 
-### Docker / OCI Container (GHCR)
+Expected output:
+```text
+JVM-MCP Doctor
+--------------
+OS Name:       Linux / macOS / Windows
+[OK] Java version 21 meets the minimum requirement (Java 21+).
+[OK] HotSpot-compatible JVM detected. Dynamic Attach API fully supported.
+[OK] Attach API is functioning.
+[OK] Found local Java processes accessible to user.
+
+Your system is ready to use JVM-MCP.
+```
+
+---
+
+### Operating System Permissions & Troubleshooting
+
+| Platform / Environment | Requirement & Operational Guidance |
+| :--- | :--- |
+| **All Platforms (User Isolation)** | Target JVM processes must run under the **same operating system user** as `jvm-mcp`. For security reasons, cross-user process attachment is blocked by JVM runtime specifications. |
+| **Linux (`ptrace_scope`)** | Linux kernel YAMA restrictions may restrict dynamic attachment. Ensure `/proc/sys/kernel/yama/ptrace_scope` is `0` or grant `CAP_SYS_PTRACE`. |
+| **Docker Containers** | When monitoring processes inside containers, run with `--pid=host` to share the host process namespace and `--cap-add=SYS_PTRACE`. |
+| **macOS (SIP & Hardened Runtime)** | macOS process security requires `jvm-mcp` to run under the same interactive user session. |
+| **Headless / Remote Spring Boot** | When dynamic Attach API is restricted by environment security policies, use **Actuator Remote Mode** (`get_actuator_health`, `get_actuator_metrics`) via standard HTTP/HTTPS without requiring local Attach API access. |
+
+---
+
+### Updating & Uninstallation
+
+#### Updating
+- **Linux & macOS**: Re-run the installer: `curl -fsSL https://raw.githubusercontent.com/oscarbol09/jvm-mcp/main/install.sh | bash`
+- **Homebrew**: `brew update && brew upgrade jvm-mcp`
+- **Windows (PowerShell)**: Re-run: `irm https://raw.githubusercontent.com/oscarbol09/jvm-mcp/main/install.ps1 | iex`
+- **Scoop**: `scoop update jvm-mcp`
+
+#### Uninstallation
+- **Linux & macOS**:
+  ```bash
+  curl -fsSL https://raw.githubusercontent.com/oscarbol09/jvm-mcp/main/uninstall.sh | bash
+  # Or: ./install.sh --uninstall
+  ```
+- **Windows (PowerShell)**:
+  ```powershell
+  irm https://raw.githubusercontent.com/oscarbol09/jvm-mcp/main/uninstall.ps1 | iex
+  # Or: .\install.ps1 -Uninstall
+  ```
+- **Homebrew**: `brew uninstall jvm-mcp`
+- **Scoop**: `scoop uninstall jvm-mcp`
+
+---
+
+### Alternative Channels
+
+#### Docker / OCI Container (GHCR)
 
 For containerized workflows or remote inspection of PostgreSQL and Spring Actuator endpoints:
 
@@ -106,7 +167,7 @@ For containerized workflows or remote inspection of PostgreSQL and Spring Actuat
 docker run -i --rm ghcr.io/oscarbol09/jvm-mcp:1.1.0 serve
 ```
 
-### Pre-Compiled Standalone Archives
+#### Pre-Compiled Standalone Archives
 
 Download release packages and corresponding `.sha256` checksums from [GitHub Releases](https://github.com/oscarbol09/jvm-mcp/releases):
 
@@ -126,7 +187,7 @@ tar -xzf jvm-mcp-linux-amd64.tar.gz
 ./jvm-mcp --version
 ```
 
-### Building From Source
+#### Building From Source (Developers)
 
 Requires JDK 21+ and Git:
 ```bash
