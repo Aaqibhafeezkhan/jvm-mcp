@@ -110,6 +110,7 @@ jobs:
                      --main-jar "$JAR_NAME" \
                      --main-class dev.jvmmcp.JvmMcp \
                      --runtime-image custom-jre \
+                     --win-console \
                      --dest build-out
             cd build-out
             7z a "../jvm-mcp-${MATRIX_SUFFIX}.zip" jvm-mcp
