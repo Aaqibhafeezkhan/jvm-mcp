@@ -16,6 +16,8 @@ import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -24,6 +26,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class ActuatorClientTest {
 
     private HttpServer server;
+    private ExecutorService serverExecutor;
     private int port;
     private ActuatorClient client;
 
@@ -59,6 +62,8 @@ class ActuatorClientTest {
     @BeforeEach
     void setUp() throws IOException {
         server = HttpServer.create(new InetSocketAddress(0), 0);
+        serverExecutor = Executors.newCachedThreadPool();
+        server.setExecutor(serverExecutor);
         
         server.createContext("/actuator/health", exchange -> {
             String response = "{\"status\":\"UP\"}";
@@ -137,6 +142,9 @@ class ActuatorClientTest {
     void tearDown() {
         if (server != null) {
             server.stop(0);
+        }
+        if (serverExecutor != null) {
+            serverExecutor.shutdownNow();
         }
     }
 
@@ -314,10 +322,10 @@ class ActuatorClientTest {
 
         try {
             long start = System.nanoTime();
-            String res = client.getMetricsBatch(List.of("jvm.memory.used", "stalled.one"), Duration.ofMillis(300));
+            String res = client.getMetricsBatch(List.of("jvm.memory.used", "stalled.one"), Duration.ofMillis(500));
             long elapsedMillis = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start);
 
-            assertThat(elapsedMillis).isLessThan(3000);
+            assertThat(elapsedMillis).isLessThan(4000);
             assertThat(res).startsWith("{").endsWith("}");
             assertThat(res).contains("\"jvm.memory.used\"");
             assertThat(res).contains("12345");

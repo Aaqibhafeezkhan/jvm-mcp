@@ -29,6 +29,7 @@ import java.io.PrintStream;
 import java.lang.management.MemoryUsage;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Locale;
 import java.util.Properties;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -210,8 +211,10 @@ class MemoryCommandTest {
 
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         PrintStream originalOut = System.out;
+	Locale originalFormatLocale = Locale.getDefault(Locale.Category.FORMAT);
         try (var clients = mockConstruction(MemoryMXBeanClient.class,
                 (client, context) -> when(client.getHeapSummary(anyLong())).thenReturn(summary))) {
+	    Locale.setDefault(Locale.Category.FORMAT, Locale.forLanguageTag("pt-BR"));
             System.setOut(new PrintStream(out));
             Integer exitCode = command.call();
 
@@ -252,6 +255,7 @@ class MemoryCommandTest {
             assertThat(output).doesNotContain("-1.00");
         } finally {
             System.setOut(originalOut);
+	    Locale.setDefault(Locale.Category.FORMAT, originalFormatLocale);
         }
     }
 
