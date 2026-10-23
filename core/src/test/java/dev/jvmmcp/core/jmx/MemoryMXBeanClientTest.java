@@ -52,6 +52,34 @@ class MemoryMXBeanClientTest {
         assertThat(summary.garbageCollectors()).isNotEmpty();
         assertThat(summary.pressure()).isNotNull();
         assertThat(summary.pressure().level()).isNotNull();
+        assertThat(summary.classLoading()).isNotNull();
+        assertThat(summary.classLoading().loadedClassCount()).isPositive();
+        assertThat(summary.classLoading().totalLoadedClasses()).isPositive();
+        assertThat(summary.classLoading().unloadedClassCount()).isGreaterThanOrEqualTo(0);
+    }
+
+    @Test
+    @DisplayName("getClassLoadingInfo extracts valid class loading metrics from current JVM")
+    void shouldExtractClassLoadingInfo() {
+        ClassLoadingInfo info = memoryClient.getClassLoadingInfo();
+
+        assertThat(info).isNotNull();
+        assertThat(info.loadedClassCount()).isPositive();
+        assertThat(info.totalLoadedClasses()).isPositive();
+        assertThat(info.unloadedClassCount()).isGreaterThanOrEqualTo(0);
+    }
+
+    @Test
+    @DisplayName("getClassLoadingInfo returns null gracefully when MBean query fails")
+    void shouldReturnNullWhenClassLoadingMBeanFails() throws Exception {
+        javax.management.MBeanServerConnection failingMbsc = org.mockito.Mockito.mock(javax.management.MBeanServerConnection.class);
+        org.mockito.Mockito.when(failingMbsc.getAttribute(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any()))
+            .thenThrow(new javax.management.InstanceNotFoundException("MBean not found"));
+        org.mockito.Mockito.when(failingMbsc.getMBeanInfo(org.mockito.ArgumentMatchers.any()))
+            .thenThrow(new javax.management.InstanceNotFoundException("MBean not found"));
+
+        MemoryMXBeanClient failingClient = new MemoryMXBeanClient(failingMbsc);
+        assertThat(failingClient.getClassLoadingInfo()).isNull();
     }
 
     @Test

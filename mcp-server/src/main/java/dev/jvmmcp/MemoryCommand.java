@@ -90,6 +90,12 @@ public class MemoryCommand implements Callable<Integer> {
                     summary.heap().usedMb(), quotaLabel(summary.heap()), usedPercentLabel(summary.heap()));
                 System.out.printf(Locale.ROOT, "Non-Heap Usage : %.2f MB / %s%n",
                     summary.nonHeap().usedMb(), quotaLabel(summary.nonHeap()));
+                if (summary.classLoading() != null) {
+                    System.out.printf(Locale.ROOT, "Classes Loaded : %d (Total: %d, Unloaded: %d)%n",
+                        summary.classLoading().loadedClassCount(),
+                        summary.classLoading().totalLoadedClasses(),
+                        summary.classLoading().unloadedClassCount());
+                }
                 System.out.printf(Locale.ROOT, "Pressure Status: %s (Ratio: %.1f%%)%n",
                     summary.pressure().level(), summary.pressure().heapUsageRatio() * 100.0);
                 System.out.printf(Locale.ROOT, "Recommendation : %s%n", summary.pressure().recommendation());

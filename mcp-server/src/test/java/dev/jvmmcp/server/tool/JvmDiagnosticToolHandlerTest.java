@@ -143,7 +143,10 @@ class JvmDiagnosticToolHandlerTest {
         assertThat(result.get("isError")).isNull();
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> content = (List<Map<String, Object>>) result.get("content");
-        assertThat(content.get(0).get("text").toString()).contains("heapUsage");
+        assertThat(content.get(0).get("text").toString())
+            .contains("heapUsage")
+            .contains("classLoading")
+            .contains("loadedClassCount");
     }
 
     @Test
