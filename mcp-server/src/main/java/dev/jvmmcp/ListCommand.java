@@ -2,6 +2,8 @@ package dev.jvmmcp;
 
 import dev.jvmmcp.core.attach.JvmAttachService;
 import dev.jvmmcp.core.model.JvmProcess;
+import dev.jvmmcp.core.util.SimpleJson;
+import picocli.CommandLine.Option;
 import picocli.CommandLine.Command;
 
 import java.util.List;
@@ -14,6 +16,9 @@ import java.util.concurrent.Callable;
     mixinStandardHelpOptions = true
 )
 public class ListCommand implements Callable<Integer> {
+
+    @Option(names = {"--json"}, description = "Output in JSON format")
+    boolean json;
 
     private final JvmAttachService service;
 
@@ -28,6 +33,11 @@ public class ListCommand implements Callable<Integer> {
     @Override
     public Integer call() {
         List<JvmProcess> jvms = service.listJvms();
+
+        if (json) {
+            System.out.println(SimpleJson.toJson(jvms));
+            return 0;
+        }
 
         if (jvms.isEmpty()) {
             System.out.println("No running JVM processes discovered.");
