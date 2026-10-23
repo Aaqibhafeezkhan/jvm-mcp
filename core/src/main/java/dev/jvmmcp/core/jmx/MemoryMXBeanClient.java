@@ -1,9 +1,11 @@
 package dev.jvmmcp.core.jmx;
 
 import dev.jvmmcp.core.model.*;
+import dev.jvmmcp.core.port.MemoryDiagnosticPort;
 
 import javax.management.MBeanServerConnection;
 import java.io.IOException;
+import java.lang.System.Logger;
 import java.lang.management.*;
 import java.util.ArrayList;
 import java.util.List;
@@ -11,9 +13,9 @@ import java.util.List;
 /**
  * Diagnostic client querying JVM Memory and Garbage Collector MXBeans via JMX.
  */
-import dev.jvmmcp.core.port.MemoryDiagnosticPort;
-
 public class MemoryMXBeanClient implements MemoryDiagnosticPort {
+
+    private static final Logger LOGGER = System.getLogger(MemoryMXBeanClient.class.getName());
 
     private final MBeanServerConnection mbsc;
 
@@ -46,8 +48,27 @@ public class MemoryMXBeanClient implements MemoryDiagnosticPort {
         List<GarbageCollectorInfo> gcs = getGarbageCollectors();
 
         MemoryPressure pressure = evaluatePressure(heapUsage, pools, gcs, uptimeMs);
+        ClassLoadingInfo classLoading = getClassLoadingInfo();
 
-        return new HeapSummary(pid, heapUsage, nonHeapUsage, pools, gcs, pressure);
+        return new HeapSummary(pid, heapUsage, nonHeapUsage, pools, gcs, pressure, classLoading);
+    }
+
+    public ClassLoadingInfo getClassLoadingInfo() {
+        try {
+            ClassLoadingMXBean classLoadingMXBean = ManagementFactory.newPlatformMXBeanProxy(
+                mbsc,
+                ManagementFactory.CLASS_LOADING_MXBEAN_NAME,
+                ClassLoadingMXBean.class
+            );
+            return new ClassLoadingInfo(
+                classLoadingMXBean.getLoadedClassCount(),
+                classLoadingMXBean.getTotalLoadedClassCount(),
+                classLoadingMXBean.getUnloadedClassCount()
+            );
+        } catch (Exception e) {
+            LOGGER.log(Logger.Level.DEBUG, "Could not query ClassLoadingMXBean", e);
+            return null;
+        }
     }
 
     public List<MemoryPoolInfo> getMemoryPools() throws IOException {
