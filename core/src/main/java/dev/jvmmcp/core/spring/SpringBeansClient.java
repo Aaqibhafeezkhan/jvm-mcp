@@ -5,14 +5,14 @@ import dev.jvmmcp.core.jmx.JmxConnectionManager;
 import dev.jvmmcp.core.model.SpringBeanDetail;
 import dev.jvmmcp.core.model.SpringBeansReport;
 import dev.jvmmcp.core.model.SpringContextBeans;
-
+import java.util.*;
 import javax.management.MBeanServerConnection;
 import javax.management.ObjectName;
-import java.util.*;
 
- /**
-  * High-level service inspecting Spring Beans via a dual strategy: Actuator HTTP with automatic JMX fallback.
-  */
+/**
+ * High-level service inspecting Spring Beans via a dual strategy: Actuator HTTP with automatic JMX
+ * fallback.
+ */
 public class SpringBeansClient {
 
     private static final String EXACT_MATCH = "EXACT";
@@ -23,11 +23,7 @@ public class SpringBeansClient {
         JmxConnectionManager connect() throws Exception;
     }
 
-    public record BeanDetailMatch(
-        String contextId,
-        SpringBeanDetail bean,
-        String matchedBy
-    ) {}
+    public record BeanDetailMatch(String contextId, SpringBeanDetail bean, String matchedBy) {}
 
     public static final class AmbiguousBeanMatchException extends IllegalArgumentException {
 
@@ -37,11 +33,11 @@ public class SpringBeansClient {
 
         public AmbiguousBeanMatchException(String beanName, List<String> contextIds) {
             super(
-                "Ambiguous bean lookup for '" + beanName
-                    + "': matching beans were found in Spring contexts "
-                    + contextIds
-                    + ". Use a unique bean name or alias."
-            );
+                    "Ambiguous bean lookup for '"
+                            + beanName
+                            + "': matching beans were found in Spring contexts "
+                            + contextIds
+                            + ". Use a unique bean name or alias.");
             this.contextIds = List.copyOf(contextIds);
         }
 
@@ -63,20 +59,17 @@ public class SpringBeansClient {
     }
 
     public SpringBeansReport inspectBeans(
-            long pid,
-            VirtualMachine vm,
-            MBeanServerConnection mbsc,
-            String filterGlob) {
+            long pid, VirtualMachine vm, MBeanServerConnection mbsc, String filterGlob) {
 
         // Strategy 1: Attempt Actuator HTTP discovery
         if (vm != null) {
             Optional<ActuatorProbe.ProbeResult> probeResult = actuatorProbe.probe(vm);
             if (probeResult.isPresent()) {
-                SpringBeansReport report = beansParser.parse(
-                    pid,
-                    "ACTUATOR_HTTP (" + probeResult.get().url() + ")",
-                    probeResult.get().rawJson()
-                );
+                SpringBeansReport report =
+                        beansParser.parse(
+                                pid,
+                                "ACTUATOR_HTTP (" + probeResult.get().url() + ")",
+                                probeResult.get().rawJson());
                 return applyFilter(report, filterGlob);
             }
         }
@@ -90,78 +83,59 @@ public class SpringBeansClient {
         }
 
         return new SpringBeansReport(
-            pid,
-            "NOT_AVAILABLE (Actuator HTTP not reachable and JMX Beans endpoint missing)",
-            0,
-            List.of()
-        );
+                pid,
+                "NOT_AVAILABLE (Actuator HTTP not reachable and JMX Beans endpoint missing)",
+                0,
+                List.of());
     }
 
     public SpringBeansReport inspectBeansWithJmxProvider(
             long pid,
             VirtualMachine vm,
             JmxConnectionProvider jmxConnectionProvider,
-            String filterGlob) throws Exception {
+            String filterGlob)
+            throws Exception {
 
         if (vm != null) {
             Optional<ActuatorProbe.ProbeResult> probeResult = actuatorProbe.probe(vm);
             if (probeResult.isPresent()) {
-                SpringBeansReport report = beansParser.parse(
-                    pid,
-                    "ACTUATOR_HTTP (" + probeResult.get().url() + ")",
-                    probeResult.get().rawJson()
-                );
+                SpringBeansReport report =
+                        beansParser.parse(
+                                pid,
+                                "ACTUATOR_HTTP (" + probeResult.get().url() + ")",
+                                probeResult.get().rawJson());
                 return applyFilter(report, filterGlob);
             }
         }
 
         try (JmxConnectionManager jmxManager = jmxConnectionProvider.connect()) {
-            return inspectBeans(
-                pid,
-                null,
-                jmxManager.getMBeanServerConnection(),
-                filterGlob
-            );
+            return inspectBeans(pid, null, jmxManager.getMBeanServerConnection(), filterGlob);
         }
     }
 
-    public SpringBeansReport inspectFromActuatorUrl(
-            long pid,
-            String baseUrl,
-            String filterGlob) {
+    public SpringBeansReport inspectFromActuatorUrl(long pid, String baseUrl, String filterGlob) {
 
         Optional<String> json = actuatorProbe.fetchFromUrl(baseUrl);
         if (json.isPresent()) {
-            SpringBeansReport report = beansParser.parse(
-                pid,
-                "ACTUATOR_HTTP (" + baseUrl + ")",
-                json.get()
-            );
+            SpringBeansReport report =
+                    beansParser.parse(pid, "ACTUATOR_HTTP (" + baseUrl + ")", json.get());
             return applyFilter(report, filterGlob);
         }
 
-        return new SpringBeansReport(
-            pid,
-            "ACTUATOR_UNREACHABLE (" + baseUrl + ")",
-            0,
-            List.of()
-        );
+        return new SpringBeansReport(pid, "ACTUATOR_UNREACHABLE (" + baseUrl + ")", 0, List.of());
     }
 
     /**
      * Backward-compatible lookup returning only the bean detail.
      *
-     * Exact, case-sensitive names and aliases take priority. A case-insensitive
-     * fallback is considered only if no exact match exists.
+     * <p>Exact, case-sensitive names and aliases take priority. A case-insensitive fallback is
+     * considered only if no exact match exists.
      *
      * @throws AmbiguousBeanMatchException when multiple beans match at the selected priority
      */
-    public Optional<SpringBeanDetail> getBeanDetail(
-            SpringBeansReport report,
-            String beanName) {
+    public Optional<SpringBeanDetail> getBeanDetail(SpringBeansReport report, String beanName) {
 
-        return getBeanDetailMatch(report, beanName)
-            .map(BeanDetailMatch::bean);
+        return getBeanDetailMatch(report, beanName).map(BeanDetailMatch::bean);
     }
 
     /**
@@ -170,23 +144,20 @@ public class SpringBeansClient {
      * @return the unique match, or empty when no bean matches
      * @throws AmbiguousBeanMatchException when multiple beans match at the selected priority
      */
-    public Optional<BeanDetailMatch> getBeanDetailMatch(
-            SpringBeansReport report,
-            String beanName) {
+    public Optional<BeanDetailMatch> getBeanDetailMatch(SpringBeansReport report, String beanName) {
 
         if (report == null || beanName == null || beanName.isBlank()) {
             return Optional.empty();
         }
 
-        List<BeanDetailMatch> exactMatches =
-            findBeanMatches(report, beanName, false, EXACT_MATCH);
+        List<BeanDetailMatch> exactMatches = findBeanMatches(report, beanName, false, EXACT_MATCH);
 
         if (!exactMatches.isEmpty()) {
             return Optional.of(resolveUniqueMatch(beanName, exactMatches));
         }
 
         List<BeanDetailMatch> fallbackMatches =
-            findBeanMatches(report, beanName, true, CASE_INSENSITIVE_FALLBACK);
+                findBeanMatches(report, beanName, true, CASE_INSENSITIVE_FALLBACK);
 
         if (fallbackMatches.isEmpty()) {
             return Optional.empty();
@@ -196,10 +167,7 @@ public class SpringBeansClient {
     }
 
     private List<BeanDetailMatch> findBeanMatches(
-            SpringBeansReport report,
-            String beanName,
-            boolean ignoreCase,
-            String matchedBy) {
+            SpringBeansReport report, String beanName, boolean ignoreCase, String matchedBy) {
 
         if (report.contexts() == null) {
             return List.of();
@@ -232,9 +200,7 @@ public class SpringBeansClient {
     }
 
     private boolean matchesBeanNameOrAlias(
-            SpringBeanDetail bean,
-            String beanName,
-            boolean ignoreCase) {
+            SpringBeanDetail bean, String beanName, boolean ignoreCase) {
 
         if (matchesName(bean.name(), beanName, ignoreCase)) {
             return true;
@@ -242,33 +208,25 @@ public class SpringBeansClient {
 
         List<String> aliases = bean.aliases();
         return aliases != null
-            && aliases.stream().anyMatch(alias -> matchesName(alias, beanName, ignoreCase));
+                && aliases.stream().anyMatch(alias -> matchesName(alias, beanName, ignoreCase));
     }
 
-    private boolean matchesName(
-            String candidate,
-            String requestedName,
-            boolean ignoreCase) {
+    private boolean matchesName(String candidate, String requestedName, boolean ignoreCase) {
 
         if (candidate == null) {
             return false;
         }
 
         return ignoreCase
-            ? candidate.equalsIgnoreCase(requestedName)
-            : candidate.equals(requestedName);
+                ? candidate.equalsIgnoreCase(requestedName)
+                : candidate.equals(requestedName);
     }
 
-    private BeanDetailMatch resolveUniqueMatch(
-            String beanName,
-            List<BeanDetailMatch> matches) {
+    private BeanDetailMatch resolveUniqueMatch(String beanName, List<BeanDetailMatch> matches) {
 
         if (matches.size() > 1) {
-            List<String> contextIds = matches.stream()
-                .map(BeanDetailMatch::contextId)
-                .distinct()
-                .sorted()
-                .toList();
+            List<String> contextIds =
+                    matches.stream().map(BeanDetailMatch::contextId).distinct().sorted().toList();
 
             throw new AmbiguousBeanMatchException(beanName, contextIds);
         }
@@ -276,9 +234,7 @@ public class SpringBeansClient {
         return matches.get(0);
     }
 
-    private Optional<SpringBeansReport> queryJmxBeans(
-            long pid,
-            MBeanServerConnection mbsc) {
+    private Optional<SpringBeansReport> queryJmxBeans(long pid, MBeanServerConnection mbsc) {
 
         String[] candidateObjectNames = {
             "org.springframework.boot:type=Endpoint,name=Beans",
@@ -293,12 +249,7 @@ public class SpringBeansClient {
                     Object result = null;
 
                     try {
-                        result = mbsc.invoke(
-                            objectName,
-                            "beans",
-                            new Object[0],
-                            new String[0]
-                        );
+                        result = mbsc.invoke(objectName, "beans", new Object[0], new String[0]);
                     } catch (Exception ignored) {
                         try {
                             result = mbsc.getAttribute(objectName, "Data");
@@ -315,12 +266,10 @@ public class SpringBeansClient {
                         Map<String, Object> casted = (Map<String, Object>) map;
 
                         return Optional.of(
-                            beansParser.parseMap(pid, "JMX_MBEAN (" + name + ")", casted)
-                        );
+                                beansParser.parseMap(pid, "JMX_MBEAN (" + name + ")", casted));
                     } else if (result instanceof String json) {
                         return Optional.of(
-                            beansParser.parse(pid, "JMX_MBEAN (" + name + ")", json)
-                        );
+                                beansParser.parse(pid, "JMX_MBEAN (" + name + ")", json));
                     }
                 }
             } catch (Exception ignored) {
@@ -330,9 +279,7 @@ public class SpringBeansClient {
         return Optional.empty();
     }
 
-    private SpringBeansReport applyFilter(
-            SpringBeansReport report,
-            String filterGlob) {
+    private SpringBeansReport applyFilter(SpringBeansReport report, String filterGlob) {
 
         if (filterGlob == null || filterGlob.isBlank() || "*".equals(filterGlob)) {
             return report;
@@ -343,33 +290,38 @@ public class SpringBeansClient {
         int filteredTotal = 0;
 
         for (SpringContextBeans context : report.contexts()) {
-            List<SpringBeanDetail> matchedBeans = context.beans().stream()
-                .filter(bean ->
-                    (bean.name() != null && pattern.matcher(bean.name()).matches())
-                        || (bean.type() != null && pattern.matcher(bean.type()).matches())
-                        || (bean.aliases() != null && bean.aliases().stream()
-                            .anyMatch(alias ->
-                                alias != null && pattern.matcher(alias).matches()
-                            ))
-                )
-                .toList();
+            List<SpringBeanDetail> matchedBeans =
+                    context.beans().stream()
+                            .filter(
+                                    bean ->
+                                            (bean.name() != null
+                                                            && pattern.matcher(bean.name())
+                                                                    .matches())
+                                                    || (bean.type() != null
+                                                            && pattern.matcher(bean.type())
+                                                                    .matches())
+                                                    || (bean.aliases() != null
+                                                            && bean.aliases().stream()
+                                                                    .anyMatch(
+                                                                            alias ->
+                                                                                    alias != null
+                                                                                            && pattern.matcher(
+                                                                                                            alias)
+                                                                                                    .matches())))
+                            .toList();
 
             if (!matchedBeans.isEmpty()) {
                 filteredTotal += matchedBeans.size();
-                filteredContexts.add(new SpringContextBeans(
-                    context.contextId(),
-                    context.parentId(),
-                    matchedBeans.size(),
-                    matchedBeans
-                ));
+                filteredContexts.add(
+                        new SpringContextBeans(
+                                context.contextId(),
+                                context.parentId(),
+                                matchedBeans.size(),
+                                matchedBeans));
             }
         }
 
         return new SpringBeansReport(
-            report.pid(),
-            report.discoverySource(),
-            filteredTotal,
-            filteredContexts
-        );
+                report.pid(), report.discoverySource(), filteredTotal, filteredContexts);
     }
 }

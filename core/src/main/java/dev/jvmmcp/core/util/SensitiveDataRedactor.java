@@ -3,57 +3,49 @@ package dev.jvmmcp.core.util;
 import java.util.regex.Pattern;
 
 /**
- * Defensive utility that scrubs operational secrets (passwords, auth tokens, JDBC credentials,
- * API keys, and JWTs) from diagnostic reports, thread dumps, and actuator output before
- * transmission over MCP.
+ * Defensive utility that scrubs operational secrets (passwords, auth tokens, JDBC credentials, API
+ * keys, and JWTs) from diagnostic reports, thread dumps, and actuator output before transmission
+ * over MCP.
  */
 public final class SensitiveDataRedactor {
 
-    private static final Pattern BEARER_PATTERN = Pattern.compile(
-        "(?i)\\b(bearer\\s+)[A-Za-z0-9\\-._~+/]+=*",
-        Pattern.CASE_INSENSITIVE
-    );
+    private static final Pattern BEARER_PATTERN =
+            Pattern.compile("(?i)\\b(bearer\\s+)[A-Za-z0-9\\-._~+/]+=*", Pattern.CASE_INSENSITIVE);
 
-    private static final Pattern BASIC_PATTERN = Pattern.compile(
-        "(?i)\\b(basic\\s+)[A-Za-z0-9+/]+=*",
-        Pattern.CASE_INSENSITIVE
-    );
+    private static final Pattern BASIC_PATTERN =
+            Pattern.compile("(?i)\\b(basic\\s+)[A-Za-z0-9+/]+=*", Pattern.CASE_INSENSITIVE);
 
-    private static final Pattern JSON_SECRET_PATTERN = Pattern.compile(
-        "(?i)(\"(?:password|secret|token|apikey|api_key|access_token|client_secret|private_key|auth_token)\"\\s*:\\s*)\"(?:[^\"\\\\]|\\\\.)*\"",
-        Pattern.CASE_INSENSITIVE
-    );
+    private static final Pattern JSON_SECRET_PATTERN =
+            Pattern.compile(
+                    "(?i)(\"(?:password|secret|token|apikey|api_key|access_token|client_secret|private_key|auth_token)\"\\s*:\\s*)\"(?:[^\"\\\\]|\\\\.)*\"",
+                    Pattern.CASE_INSENSITIVE);
 
-    private static final Pattern ASSIGNMENT_PATTERN = Pattern.compile(
-        "(?i)\\b(password|secret|token|apikey|api_key|access_token|client_secret|private_key|auth_token)\\s*=\\s*['\"]?[^'\"\\s,;&]+['\"]?",
-        Pattern.CASE_INSENSITIVE
-    );
+    private static final Pattern ASSIGNMENT_PATTERN =
+            Pattern.compile(
+                    "(?i)\\b(password|secret|token|apikey|api_key|access_token|client_secret|private_key|auth_token)\\s*=\\s*['\"]?[^'\"\\s,;&]+['\"]?",
+                    Pattern.CASE_INSENSITIVE);
 
-    private static final Pattern JDBC_URL_PATTERN = Pattern.compile(
-        "(?i)(jdbc:[a-z:]+://[^:]+:)([^@]+)@",
-        Pattern.CASE_INSENSITIVE
-    );
+    private static final Pattern JDBC_URL_PATTERN =
+            Pattern.compile("(?i)(jdbc:[a-z:]+://[^:]+:)([^@]+)@", Pattern.CASE_INSENSITIVE);
 
     // Generic userinfo redaction for ANY scheme (mongodb, amqp, redis, postgres, https, ...).
     // The JDBC variant above only matches jdbc: URLs and its [^@]+ stops at the FIRST '@',
     // leaking the tail of a password that itself contains '@'. This pattern anchors on the
     // last '@' before the host: the password group ([^/\\s]+) is greedy, so 'u:pa@ss@host'
     // redacts to 'u:***@host'. Runs after JDBC_URL_PATTERN (idempotent on already-redacted text).
-    private static final Pattern URI_USERINFO_PATTERN = Pattern.compile(
-        "(?i)\\b([a-z][a-z0-9+.\\-]*://[^\\s/:@]*:)([^\\s/]+)@",
-        Pattern.CASE_INSENSITIVE
-    );
+    private static final Pattern URI_USERINFO_PATTERN =
+            Pattern.compile(
+                    "(?i)\\b([a-z][a-z0-9+.\\-]*://[^\\s/:@]*:)([^\\s/]+)@",
+                    Pattern.CASE_INSENSITIVE);
 
-    private static final Pattern JWT_PATTERN = Pattern.compile(
-        "\\beyJ[A-Za-z0-9_-]{10,}\\.[A-Za-z0-9_-]{10,}\\.[A-Za-z0-9_-]*\\b"
-    );
+    private static final Pattern JWT_PATTERN =
+            Pattern.compile("\\beyJ[A-Za-z0-9_-]{10,}\\.[A-Za-z0-9_-]{10,}\\.[A-Za-z0-9_-]*\\b");
 
-    private static final Pattern SENSITIVE_KEY_PATTERN = Pattern.compile(
-        "(?i).*(password|secret|token|apikey|api_key|access_token|client_secret|private_key|auth_token|credential).*"
-    );
+    private static final Pattern SENSITIVE_KEY_PATTERN =
+            Pattern.compile(
+                    "(?i).*(password|secret|token|apikey|api_key|access_token|client_secret|private_key|auth_token|credential).*");
 
-    private SensitiveDataRedactor() {
-    }
+    private SensitiveDataRedactor() {}
 
     /**
      * Redacts known sensitive patterns from the provided text.
@@ -97,7 +89,9 @@ public final class SensitiveDataRedactor {
                 Object key = entry.getKey();
                 Object safeKey = key instanceof String sk ? redact(sk) : key;
                 Object val = entry.getValue();
-                if (key instanceof String sk && SENSITIVE_KEY_PATTERN.matcher(sk).matches() && val instanceof String) {
+                if (key instanceof String sk
+                        && SENSITIVE_KEY_PATTERN.matcher(sk).matches()
+                        && val instanceof String) {
                     copy.put(safeKey, "***");
                 } else {
                     copy.put(safeKey, redactDeep(val));
