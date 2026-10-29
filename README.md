@@ -282,7 +282,7 @@ The server exposes 14 diagnostic tools to AI assistants:
 | `get_thread_dump` | Full formatted thread dump with lock stack traces. | `pid` (number) |
 | `list_spring_beans` | Paginated Spring beans by context via JMX/Actuator, with `totalBeans` and `truncated`; `summary` returns per-context counts and top 10 packages instead. | `pid` (number), `filter` (string, optional), `limit` (integer, optional, default 200, max 2000), `offset` (integer, optional, default 0), `summary` (boolean, optional) |
 | `get_bean_detail` | Detailed metadata, autowired dependencies, and scope of a bean. | `pid` (number), `beanName` (string) |
-| `list_hikari_pools` | HikariCP pool metrics, active/idle connections, and leak warnings. | `pid` (number) |
+| `list_hikari_pools` | HikariCP pool metrics, active/idle connections, and leak warnings. Returns a note when no HikariCP MBeans are registered. | `pid` (number) |
 | `inspect_pg_schema` | PostgreSQL table schema, columns, row estimates, and foreign keys. | `url` (string), `schema` (string, optional) |
 | `find_missing_indexes` | High sequential scan tables with low index usage via `pg_stat_user_tables`. | `url` (string), `schema` (string, optional), `minTableSizeMb` (integer, optional) |
 | `find_slow_queries` | Slow query execution profiles from `pg_stat_statements`. | `url` (string), `limit` (integer, optional) |
@@ -297,6 +297,17 @@ The server exposes 14 diagnostic tools to AI assistants:
 matches and using a case-insensitive fallback only when unambiguous. Its report builder
 retains only matching candidates across contexts. HTTP discovery still downloads and
 parses the full Actuator payload; unrelated bean-detail records are not constructed.
+
+`list_hikari_pools` returns a `pools` array plus an optional `note`. When HikariCP MBeans are not registered (the Spring Boot default), `pools` is empty and `note` explains how to expose them:
+
+```json
+{
+  "pools": [],
+  "note": "No HikariCP MBeans registered. Enable spring.datasource.hikari.register-mbeans=true or use get_actuator_metrics with hikaricp.connections.*"
+}
+```
+
+When pools are available, `pools` contains the existing per-pool metrics and `note` is `null`.
 
 Missing-index analysis defaults to a minimum table size of 1 MiB (1,048,576 bytes).
 Set `minTableSizeMb` to `0` to include smaller tables, or choose a higher whole-number
