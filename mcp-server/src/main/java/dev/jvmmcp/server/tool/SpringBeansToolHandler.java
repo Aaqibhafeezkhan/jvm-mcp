@@ -181,14 +181,24 @@ public class SpringBeansToolHandler implements ToolHandler {
                         jmxManagerOwnsVm[0] = true;
                         return manager;
                     };
-            SpringBeansReport report =
-                    beanName != null
-                            ? beansClient.inspectBeanDetailWithJmxProvider(
-                                    pid, vm, provider, beanName)
-                            : beansClient.inspectBeansWithJmxProvider(
-                                    pid, vm, provider, filterGlob);
+            SpringBeansReport report;
+            try {
+                report =
+                        beanName != null
+                                ? beansClient.inspectBeanDetailWithJmxProvider(
+                                        pid, vm, provider, beanName)
+                                : beansClient.inspectBeansWithJmxProvider(
+                                        pid, vm, provider, filterGlob);
+            } catch (Exception e) {
+                return discoveryErrorResult(
+                        "JMX connection failed (" + e.getClass().getSimpleName() + ")");
+            }
 
             if ("list_spring_beans".equals(toolName)) {
+                if (report.discoverySource() != null
+                        && report.discoverySource().startsWith("NOT_AVAILABLE")) {
+                    return discoveryErrorResult(report.discoverySource());
+                }
                 Map<String, Object> response =
                         summary ? summarizeBeans(report) : paginateBeans(report, limit, offset);
                 content.add(Map.of("type", "text", "text", SimpleJson.toJson(response)));
@@ -232,6 +242,22 @@ public class SpringBeansToolHandler implements ToolHandler {
         }
 
         return Map.of("content", content);
+    }
+
+    private Map<String, Object> discoveryErrorResult(String diagnostic) {
+        return Map.of(
+                "content",
+                List.of(
+                        Map.of(
+                                "type",
+                                "text",
+                                "text",
+                                "Unable to discover Spring beans: "
+                                        + diagnostic
+                                        + ". Configure the Actuator beans endpoint through your approved management configuration "
+                                        + "or enable Spring JMX with spring.jmx.enabled=true.")),
+                "isError",
+                true);
     }
 
     private static Map<String, Object> paginateBeans(

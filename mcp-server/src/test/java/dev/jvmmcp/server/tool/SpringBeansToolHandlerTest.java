@@ -104,9 +104,14 @@ class SpringBeansToolHandlerTest {
                             return null;
                         });
 
-        assertThatThrownBy(() -> handler.execute("list_spring_beans", Map.of("pid", 123)))
-                .isInstanceOf(IOException.class)
-                .hasMessageContaining("JMX error");
+        Map<String, Object> result = handler.execute("list_spring_beans", Map.of("pid", 123));
+        assertThat(result.get("isError")).isEqualTo(true);
+        assertThat(
+                        ((List<Map<String, Object>>) result.get("content"))
+                                .get(0)
+                                .get("text")
+                                .toString())
+                .contains("JMX connection failed (IOException)");
 
         verify(mockAttachService).detach(mockVm);
     }
@@ -133,8 +138,8 @@ class SpringBeansToolHandlerTest {
                             return null;
                         });
 
-        assertThatThrownBy(() -> handler.execute("list_spring_beans", Map.of("pid", 123)))
-                .isInstanceOf(IOException.class);
+        Map<String, Object> result = handler.execute("list_spring_beans", Map.of("pid", 123));
+        assertThat(result.get("isError")).isEqualTo(true);
 
         verify(mockAttachService).detach(mockVm);
     }
@@ -214,6 +219,34 @@ class SpringBeansToolHandlerTest {
     }
 
     @Test
+    @DisplayName("list_spring_beans returns an error when discovery is unavailable")
+    void testListSpringBeansDiscoveryFailure() throws Exception {
+        when(mockAttachService.attach("123")).thenReturn(AttachResult.success("123", null));
+        SpringBeansReport report =
+                new SpringBeansReport(
+                        123,
+                        "NOT_AVAILABLE (JMX MBean not registered: org.springframework.boot:type=Endpoint,name=Beans)",
+                        0,
+                        List.of());
+        when(mockBeansClient.inspectBeansWithJmxProvider(eq(123L), any(), any(), any()))
+                .thenReturn(report);
+
+        SpringBeansToolHandler handler =
+                new SpringBeansToolHandler(mockAttachService, mockBeansClient);
+
+        Map<String, Object> result = handler.execute("list_spring_beans", Map.of("pid", 123));
+
+        assertThat(result.get("isError")).isEqualTo(true);
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> content = (List<Map<String, Object>>) result.get("content");
+        assertThat(content.get(0).get("text").toString())
+                .contains("Unable to discover Spring beans")
+                .contains("approved management configuration")
+                .contains("spring.jmx.enabled=true")
+                .contains("MBean not registered");
+    }
+
+    @Test
     @DisplayName("list_spring_beans paginates globally in context and bean-name order")
     @SuppressWarnings("unchecked")
     void testPaginationAcrossContexts() throws Exception {
@@ -271,6 +304,152 @@ class SpringBeansToolHandlerTest {
         assertThat(firstBeans.get(0).get("name")).isEqualTo("beta");
         assertThat(secondBeans).hasSize(1);
         assertThat(secondBeans.get(0).get("name")).isEqualTo("delta");
+    }
+
+    @Test
+    @DisplayName("get_bean_detail returns bean detail JSON with owning context and match mode")
+    void testGetBeanDetailSuccess() throws Exception {
+        when(mockAttachService.attach("123")).thenReturn(AttachResult.success("123", null));
+        SpringBeanDetail bean =
+                new SpringBeanDetail(
+                        "orderService",
+                        List.of(),
+                        "singleton",
+                        "com.example.OrderService",
+                        null,
+                        List.of());
+        SpringBeansReport report =
+                new SpringBeansReport(
+                        123,
+                        "JMX",
+                        1,
+                        List.of(new SpringContextBeans("root", null, 1, List.of(bean))));
+        when(mockBeansClient.inspectBeanDetailWithJmxProvider(
+                        eq(123L), any(), any(), eq("orderService")))
+                .thenAnswer(
+                        invocation -> {
+                            SpringBeansClient.JmxConnectionProvider provider =
+                                    invocation.getArgument(2);
+                            provider.connect().close();
+                            return report;
+                        });
+        when(mockBeansClient.getBeanDetailMatch(report, "orderService"))
+                .thenReturn(
+                        Optional.of(new SpringBeansClient.BeanDetailMatch("root", bean, "EXACT")));
+
+        SpringBeansToolHandler handler =
+                new SpringBeansToolHandler(
+                        mockAttachService,
+                        mockBeansClient,
+                        (vm, p) -> JmxConnectionManager.connectLocal());
+
+        Map<String, Object> result =
+                handler.execute("get_bean_detail", Map.of("pid", 123, "beanName", "orderService"));
+        assertThat(result.get("isError")).isNull();
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> content = (List<Map<String, Object>>) result.get("content");
+        assertThat(content).hasSize(1);
+        assertThat(content.get(0).get("text").toString())
+                .contains("com.example.OrderService", "root", "EXACT", "contextId", "matchedBy");
+    }
+
+    @Test
+    @DisplayName(
+            "get_bean_detail returns descriptive error and isError true when bean is not found")
+    void testGetBeanDetailNotFound() throws Exception {
+        when(mockAttachService.attach("123")).thenReturn(AttachResult.success("123", null));
+        SpringBeansReport report =
+                new SpringBeansReport(
+                        123, "JMX", 1, List.of(new SpringContextBeans("root", null, 0, List.of())));
+        when(mockBeansClient.inspectBeanDetailWithJmxProvider(
+                        eq(123L), any(), any(), eq("missingBean")))
+                .thenAnswer(
+                        invocation -> {
+                            SpringBeansClient.JmxConnectionProvider provider =
+                                    invocation.getArgument(2);
+                            provider.connect().close();
+                            return report;
+                        });
+        when(mockBeansClient.getBeanDetailMatch(report, "missingBean"))
+                .thenReturn(Optional.empty());
+
+        SpringBeansToolHandler handler =
+                new SpringBeansToolHandler(
+                        mockAttachService,
+                        mockBeansClient,
+                        (vm, p) -> JmxConnectionManager.connectLocal());
+
+        Map<String, Object> result =
+                handler.execute("get_bean_detail", Map.of("pid", 123, "beanName", "missingBean"));
+        assertThat(result.get("isError")).isEqualTo(true);
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> content = (List<Map<String, Object>>) result.get("content");
+        assertThat(content).hasSize(1);
+        assertThat(content.get(0).get("text").toString())
+                .contains("Bean not found: 'missingBean'", "list_spring_beans");
+    }
+
+    @Test
+    @DisplayName("get_bean_detail throws when beanName is missing")
+    void testGetBeanDetailMissingName() {
+
+        SpringBeansToolHandler handler =
+                new SpringBeansToolHandler(
+                        mockAttachService,
+                        mockBeansClient,
+                        (vm, p) -> JmxConnectionManager.connectLocal());
+
+        assertThatThrownBy(() -> handler.execute("get_bean_detail", Map.of("pid", 123)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Missing required argument: beanName");
+        org.mockito.Mockito.verifyNoInteractions(mockAttachService, mockBeansClient);
+    }
+
+    @Test
+    @DisplayName("execute throws on unknown tool name")
+    void testUnknownTool() {
+        when(mockAttachService.attach("123")).thenReturn(AttachResult.success("123", null));
+
+        SpringBeansToolHandler handler =
+                new SpringBeansToolHandler(
+                        mockAttachService,
+                        mockBeansClient,
+                        (vm, p) -> JmxConnectionManager.connectLocal());
+
+        assertThatThrownBy(() -> handler.execute("unknown_beans_tool", Map.of("pid", 123)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Unknown Spring Beans tool");
+    }
+
+    @Test
+    @DisplayName("detail discovery preserves ambiguity and detaches after HTTP success")
+    void testAmbiguousDetailOverHttp() throws Exception {
+        when(mockAttachService.attach("123")).thenReturn(AttachResult.success("123", mockVm));
+        when(mockActuatorProbe.probe(mockVm))
+                .thenReturn(
+                        Optional.of(
+                                new ActuatorProbe.ProbeResult(
+                                        "http://localhost/actuator/beans",
+                                        """
+                        {"contexts": {
+                          "a": {"beans": {"shared": "example.First"}},
+                          "b": {"beans": {"shared": "example.Second"}}
+                        }}
+                        """)));
+        SpringBeansToolHandler handler =
+                new SpringBeansToolHandler(
+                        mockAttachService,
+                        new SpringBeansClient(mockActuatorProbe, new SpringBeansParser()),
+                        (vm, pid) -> {
+                            throw new AssertionError("JMX must stay unopened");
+                        });
+        Map<String, Object> result =
+                handler.execute(
+                        "get_bean_detail",
+                        Map.of("pid", 123, "beanName", "shared", "limit", 1, "offset", 100));
+        assertThat(result.get("isError")).isEqualTo(true);
+        assertThat(result.get("content").toString()).contains("Ambiguous bean lookup", "[a, b]");
+        verify(mockAttachService).detach(mockVm);
     }
 
     @Test
@@ -421,151 +600,5 @@ class SpringBeansToolHandlerTest {
         assertThat(((Number) topPackages.get(0).get("beanCount")).intValue()).isEqualTo(2);
         assertThat(topPackages.get(1).get("package")).isEqualTo("com.example.repository");
         assertThat(((Number) topPackages.get(1).get("beanCount")).intValue()).isEqualTo(1);
-    }
-
-    @Test
-    @DisplayName("get_bean_detail returns bean detail JSON with owning context and match mode")
-    void testGetBeanDetailSuccess() throws Exception {
-        when(mockAttachService.attach("123")).thenReturn(AttachResult.success("123", null));
-        SpringBeanDetail bean =
-                new SpringBeanDetail(
-                        "orderService",
-                        List.of(),
-                        "singleton",
-                        "com.example.OrderService",
-                        null,
-                        List.of());
-        SpringBeansReport report =
-                new SpringBeansReport(
-                        123,
-                        "JMX",
-                        1,
-                        List.of(new SpringContextBeans("root", null, 1, List.of(bean))));
-        when(mockBeansClient.inspectBeanDetailWithJmxProvider(
-                        eq(123L), any(), any(), eq("orderService")))
-                .thenAnswer(
-                        invocation -> {
-                            SpringBeansClient.JmxConnectionProvider provider =
-                                    invocation.getArgument(2);
-                            provider.connect().close();
-                            return report;
-                        });
-        when(mockBeansClient.getBeanDetailMatch(report, "orderService"))
-                .thenReturn(
-                        Optional.of(new SpringBeansClient.BeanDetailMatch("root", bean, "EXACT")));
-
-        SpringBeansToolHandler handler =
-                new SpringBeansToolHandler(
-                        mockAttachService,
-                        mockBeansClient,
-                        (vm, p) -> JmxConnectionManager.connectLocal());
-
-        Map<String, Object> result =
-                handler.execute("get_bean_detail", Map.of("pid", 123, "beanName", "orderService"));
-        assertThat(result.get("isError")).isNull();
-        @SuppressWarnings("unchecked")
-        List<Map<String, Object>> content = (List<Map<String, Object>>) result.get("content");
-        assertThat(content).hasSize(1);
-        assertThat(content.get(0).get("text").toString())
-                .contains("com.example.OrderService", "root", "EXACT", "contextId", "matchedBy");
-    }
-
-    @Test
-    @DisplayName(
-            "get_bean_detail returns descriptive error and isError true when bean is not found")
-    void testGetBeanDetailNotFound() throws Exception {
-        when(mockAttachService.attach("123")).thenReturn(AttachResult.success("123", null));
-        SpringBeansReport report =
-                new SpringBeansReport(
-                        123, "JMX", 1, List.of(new SpringContextBeans("root", null, 0, List.of())));
-        when(mockBeansClient.inspectBeanDetailWithJmxProvider(
-                        eq(123L), any(), any(), eq("missingBean")))
-                .thenAnswer(
-                        invocation -> {
-                            SpringBeansClient.JmxConnectionProvider provider =
-                                    invocation.getArgument(2);
-                            provider.connect().close();
-                            return report;
-                        });
-        when(mockBeansClient.getBeanDetailMatch(report, "missingBean"))
-                .thenReturn(Optional.empty());
-
-        SpringBeansToolHandler handler =
-                new SpringBeansToolHandler(
-                        mockAttachService,
-                        mockBeansClient,
-                        (vm, p) -> JmxConnectionManager.connectLocal());
-
-        Map<String, Object> result =
-                handler.execute("get_bean_detail", Map.of("pid", 123, "beanName", "missingBean"));
-        assertThat(result.get("isError")).isEqualTo(true);
-        @SuppressWarnings("unchecked")
-        List<Map<String, Object>> content = (List<Map<String, Object>>) result.get("content");
-        assertThat(content).hasSize(1);
-        assertThat(content.get(0).get("text").toString())
-                .contains("Bean not found: 'missingBean'", "list_spring_beans");
-    }
-
-    @Test
-    @DisplayName("get_bean_detail throws when beanName is missing")
-    void testGetBeanDetailMissingName() {
-
-        SpringBeansToolHandler handler =
-                new SpringBeansToolHandler(
-                        mockAttachService,
-                        mockBeansClient,
-                        (vm, p) -> JmxConnectionManager.connectLocal());
-
-        assertThatThrownBy(() -> handler.execute("get_bean_detail", Map.of("pid", 123)))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("Missing required argument: beanName");
-        org.mockito.Mockito.verifyNoInteractions(mockAttachService, mockBeansClient);
-    }
-
-    @Test
-    @DisplayName("execute throws on unknown tool name")
-    void testUnknownTool() {
-        when(mockAttachService.attach("123")).thenReturn(AttachResult.success("123", null));
-
-        SpringBeansToolHandler handler =
-                new SpringBeansToolHandler(
-                        mockAttachService,
-                        mockBeansClient,
-                        (vm, p) -> JmxConnectionManager.connectLocal());
-
-        assertThatThrownBy(() -> handler.execute("unknown_beans_tool", Map.of("pid", 123)))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("Unknown Spring Beans tool");
-    }
-
-    @Test
-    @DisplayName("detail discovery preserves ambiguity and detaches after HTTP success")
-    void testAmbiguousDetailOverHttp() throws Exception {
-        when(mockAttachService.attach("123")).thenReturn(AttachResult.success("123", mockVm));
-        when(mockActuatorProbe.probe(mockVm))
-                .thenReturn(
-                        Optional.of(
-                                new ActuatorProbe.ProbeResult(
-                                        "http://localhost/actuator/beans",
-                                        """
-                        {"contexts": {
-                          "a": {"beans": {"shared": "example.First"}},
-                          "b": {"beans": {"shared": "example.Second"}}
-                        }}
-                        """)));
-        SpringBeansToolHandler handler =
-                new SpringBeansToolHandler(
-                        mockAttachService,
-                        new SpringBeansClient(mockActuatorProbe, new SpringBeansParser()),
-                        (vm, pid) -> {
-                            throw new AssertionError("JMX must stay unopened");
-                        });
-        Map<String, Object> result =
-                handler.execute(
-                        "get_bean_detail",
-                        Map.of("pid", 123, "beanName", "shared", "limit", 1, "offset", 100));
-        assertThat(result.get("isError")).isEqualTo(true);
-        assertThat(result.get("content").toString()).contains("Ambiguous bean lookup", "[a, b]");
-        verify(mockAttachService).detach(mockVm);
     }
 }
