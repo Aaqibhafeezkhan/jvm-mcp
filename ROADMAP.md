@@ -74,9 +74,9 @@ This roadmap outlines completed development milestones, architectural priorities
   - Migration to official Java MCP SDK (`io.modelcontextprotocol.sdk`) once modularized without heavy transitive dependencies.
 
 - [ ] **Phase 10: Target Virtual Threads (Project Loom) Diagnostics (Issue #10)**
-  - Enumerate and inspect virtual threads inside target JVM processes via `Thread.dump_to_file -format=json` (`jcmd`).
-  - Track mounted vs unmounted virtual thread counts and carrier thread mapping.
-  - Expose `--virtual` (`-v`) flag in `jvm-mcp threads` and include in `get_thread_diagnostics` MCP tool.
+  - [x] Enumerate and inspect virtual threads inside target JVM processes via bounded HotSpot thread dump parsing (`Thread.dump_to_file`).
+  - [x] Expose `--virtual` (`-v`) flag in `jvm-mcp threads` and include `includeVirtualThreads` in `get_thread_diagnostics` MCP tool.
+  - [ ] Track mounted vs unmounted virtual thread counts and continuous carrier thread mapping via JVMTI.
 
 ---
 
