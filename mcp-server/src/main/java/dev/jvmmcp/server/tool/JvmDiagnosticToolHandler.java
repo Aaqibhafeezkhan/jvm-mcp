@@ -129,7 +129,15 @@ public class JvmDiagnosticToolHandler implements ToolHandler {
                                                                 "type",
                                                                 "number",
                                                                 "description",
-                                                                "Target JVM Process ID")),
+                                                                "Target JVM Process ID"),
+                                                        "includeVirtualThreads",
+                                                        Map.of(
+                                                                "type",
+                                                                "boolean",
+                                                                "default",
+                                                                false,
+                                                                "description",
+                                                                "Include virtual-thread counts; may create a large diagnostic dump")),
                                         "required", requiredPidArguments())),
                 Map.of(
                         "name", "get_heap_histogram",
@@ -196,6 +204,9 @@ public class JvmDiagnosticToolHandler implements ToolHandler {
         }
 
         long pid = resolvePid(args);
+        boolean includeVirtualThreads =
+                "get_thread_diagnostics".equals(toolName)
+                        && ToolArgs.getBooleanArg(args, "includeVirtualThreads", false);
         AttachResult attachResult = attachService.attach(String.valueOf(pid));
         if (!attachResult.isSuccessful()) {
             throw new IllegalStateException(attachResult.message());
@@ -231,6 +242,8 @@ public class JvmDiagnosticToolHandler implements ToolHandler {
                                                     pid,
                                                     limit))));
                 } else if ("get_thread_diagnostics".equals(toolName)) {
+                    String javaSpecificationVersion =
+                            includeVirtualThreads ? getJavaSpecificationVersion(vm) : null;
                     try (ThreadMXBeanClient threadClient =
                             new ThreadMXBeanClient(jmxManager.getMBeanServerConnection())) {
                         content.add(
@@ -238,7 +251,11 @@ public class JvmDiagnosticToolHandler implements ToolHandler {
                                         "type",
                                         "text",
                                         "text",
-                                        SimpleJson.toJson(threadClient.getThreadSummary(pid))));
+                                        SimpleJson.toJson(
+                                                includeVirtualThreads
+                                                        ? threadClient.getThreadSummary(
+                                                                pid, true, javaSpecificationVersion)
+                                                        : threadClient.getThreadSummary(pid))));
                         content.add(
                                 Map.of(
                                         "type",
@@ -281,5 +298,15 @@ public class JvmDiagnosticToolHandler implements ToolHandler {
         }
 
         return Map.of("content", content);
+    }
+
+    private String getJavaSpecificationVersion(VirtualMachine vm) {
+        try {
+            return vm == null
+                    ? System.getProperty("java.specification.version")
+                    : vm.getSystemProperties().getProperty("java.specification.version");
+        } catch (Exception ignored) {
+            return null;
+        }
     }
 }
