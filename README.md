@@ -262,8 +262,8 @@ jvm-mcp list
 # Inspect memory pools, GC pauses, and heap histogram
 jvm-mcp memory <pid>
 
-# Diagnose thread states and detect deadlock cycles (add --virtual for Loom virtual thread summary)
-jvm-mcp threads <pid> [--virtual]
+# Diagnose thread states and detect deadlock cycles (add --top-cpu for top CPU threads or --virtual for Loom)
+jvm-mcp threads <pid> [--top-cpu] [--virtual]
 
 # Inspect Spring Boot ApplicationContext beans
 jvm-mcp beans <pid> --filter "*Service*"
@@ -289,7 +289,7 @@ The server exposes 14 diagnostic tools to AI assistants:
 | `list_jvms` | Lists running JVMs with PID, display name, and detected framework (Spring Boot, Quarkus, Micronaut). | *None* |
 | `get_memory_summary` | Live heap/non-heap regions, GC pauses, and memory pressure. | `pid` (number) |
 | `get_heap_histogram` | Top class instance counts and memory consumption via `jcmd`. | `pid` (number), `limit` (number, optional) |
-| `get_thread_diagnostics` | Thread states breakdown, deadlock detection, and opt-in virtual threads summary (Java 21+). | `pid` (number), `includeVirtualThreads` (boolean, optional, default `false`) |
+| `get_thread_diagnostics` | Thread states breakdown, deadlock detection, top CPU consumer ranking, and opt-in virtual threads summary (Java 21+). | `pid` (number), `includeVirtualThreads` (boolean, optional, default `false`), `topCpuLimit` (integer, optional, default 5, max 100) |
 | `get_thread_dump` | Full formatted thread dump with lock stack traces. | `pid` (number) |
 | `list_spring_beans` | Paginated Spring beans by context via JMX/Actuator, with `totalBeans` and `truncated`; `summary` returns per-context counts and top 10 packages instead. | `pid` (number), `filter` (string, optional), `limit` (integer, optional, default 200, max 2000), `offset` (integer, optional, default 0), `summary` (boolean, optional) |
 | `get_bean_detail` | Detailed metadata, autowired dependencies, and scope of a bean. | `pid` (number), `beanName` (string) |

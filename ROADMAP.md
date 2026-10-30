@@ -24,6 +24,7 @@ This roadmap outlines completed development milestones, architectural priorities
   - GC pause tracker and diagnostic recommendations (`get_memory_summary`).
   - Heap class histogram via `jcmd GC.class_histogram` Attach API stream parsing (`HeapHistogramReader`).
   - Structured thread dumps and deadlock cycle reconstruction (`ThreadMXBeanClient`).
+  - Per-thread cumulative CPU time diagnostics and top CPU consumer ranking (`getTopCpuThreads`, `jvm-mcp threads --top-cpu`).
   - CLI diagnostic commands (`jvm-mcp memory <pid>`, `jvm-mcp threads <pid>`).
 
 - [x] **Phase 3: Spring Beans Inspector**
